@@ -1,0 +1,3 @@
+name: ci
+on: [push, pull_request]
+jobs: {}  # lint, test, build, scan, helm lint/kubeconform
