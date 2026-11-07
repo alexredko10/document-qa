@@ -11,5 +11,5 @@ This archive is a **repository-ready starting kit**, not an existing or deployed
 
 Project memory here means a **versioned Markdown file in Git**, not ChatGPT account memory.
 
-## Timeboxed execution: GRILL ME (4 hours)
+## Timeboxed execution: 
 Use `agent/GRILL_ME_4H_TASK.md` when requesting **one concrete, runnable feature in a single four-hour session**. It specifies Metadata Enrichment → Research → Design → Design QA → Planning → Coding → QA → Pre-Commit Review → Delivery, with strict time budgets and security checks. This does not replace the long-term architecture roadmap or authorise AWS deployment.
