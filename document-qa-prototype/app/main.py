@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
 from app.llm.base import LLMClient
+from app.llm.relevance import has_relevant_context
 from app.models.ask import AskRequest, AskResponse, SourceChunk
 from app.models.document import DocumentRequest, DocumentResponse
 from app.rag.cleaner import clean_text
@@ -70,10 +71,10 @@ def document(document_id: str) -> DocumentResponse:
         text=text,
     )
 
+
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest,
-    llm: LLMClient = Depends(get_llm)) -> AskResponse:
-
+        llm: LLMClient = Depends(get_llm)) -> AskResponse:
     if request.document_id not in document_chunks:
         raise HTTPException(
             status_code=404,
@@ -95,17 +96,21 @@ def ask(request: AskRequest,
         )
 
     try:
+        context = [item.text for item in results]
+        if not has_relevant_context(request.question, context):
+            return AskResponse(
+                answer="I don't know based on the provided document.",
+                source_chunks=[],
+            )
         answer = llm.generate(
             question=request.question,
-            context=[item.text for item in results],
+            context=context,
         )
 
     except LLMProviderError as exc:
         headers = {}
-
         if exc.retry_after:
             headers["Retry-After"] = exc.retry_after
-
         raise HTTPException(
             status_code=503,
             detail="LLM provider unavailable",
