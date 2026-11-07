@@ -5,3 +5,7 @@ image:
 
 llm:
   provider: stub
+
+resources:
+  requests:
+    cpu: 125m
