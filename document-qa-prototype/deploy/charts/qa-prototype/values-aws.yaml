@@ -1,0 +1,7 @@
+replicaCount: 1
+
+image:
+  digest: "sha256:e180fb25e609859201cbc1871a5be5792b80a2ed384fe39e14f3b0ebe7f51aac"
+
+llm:
+  provider: stub
