@@ -1,7 +1,7 @@
+from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Depends
-
+from fastapi import FastAPI, HTTPException, Depends,Request, Response
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
 from app.llm.base import LLMClient
@@ -13,6 +13,13 @@ from app.rag.embedder import embed_text
 from app.rag.markdown_chunker import split_markdown
 from app.rag.retriever import search_vectors
 
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+from app.observability.metrics import (
+    HTTP_REQUESTS,
+    HTTP_DURATION,
+    HTTP_IN_FLIGHT,
+)
 app = FastAPI(title="Document QA Prototype")
 
 MAX_DOCUMENT_BYTES = 1024 * 1024
@@ -21,6 +28,40 @@ documents: dict[str, str] = {}
 document_chunks: dict[str, list[str]] = {}
 document_vectors: dict[str, list[list[float]]] = {}
 
+@app.middleware("http")
+async def collect_http_metrics(request: Request, call_next):
+    # Не учитываем scraping самого /metrics.
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    HTTP_IN_FLIGHT.inc()
+    start = perf_counter()
+    status_code = 500
+
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+
+    finally:
+        elapsed = perf_counter() - start
+
+        # Берём шаблон FastAPI-маршрута, а не реальный URL.
+        route = request.scope.get("route")
+        route_name = getattr(route, "path", "unmatched")
+
+        HTTP_REQUESTS.labels(
+            method=request.method,
+            route=route_name,
+            status=str(status_code),
+        ).inc()
+
+        HTTP_DURATION.labels(
+            method=request.method,
+            route=route_name,
+        ).observe(elapsed)
+
+        HTTP_IN_FLIGHT.dec()
 
 @app.get("/healthz")
 def health():
@@ -127,4 +168,11 @@ def ask(request: AskRequest,
             )
             for item in results
         ],
+    )
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
     )
