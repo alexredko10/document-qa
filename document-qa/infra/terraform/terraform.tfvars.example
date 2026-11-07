@@ -1,0 +1,6 @@
+# Existing AWS network — READ ONLY, never Terraform-managed.
+aws_region    = "eu-west-2"
+vpc_id        = "vpc-0167fe5dbd3c2c1e3"
+subnet_id     = "subnet-0ed531b8362c2d71e"
+instance_type = "t4g.large"
+# Review the configured K3s version in variables.tf before apply.

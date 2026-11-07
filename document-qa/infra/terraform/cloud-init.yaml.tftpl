@@ -1,0 +1,19 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+write_files:
+  - path: /usr/local/sbin/bootstrap-document-qa-k3s.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      curl -fsSL --retry 4 --retry-delay 3 https://get.k3s.io -o /tmp/install-k3s.sh
+      # Pinned K3s binary; installer script is fetched at provision time.
+      INSTALL_K3S_VERSION='${k3s_version}' sh /tmp/install-k3s.sh server \
+        --disable traefik \
+        --disable servicelb
+runcmd:
+  - [ /usr/local/sbin/bootstrap-document-qa-k3s.sh ]
