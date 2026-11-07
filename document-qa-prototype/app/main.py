@@ -30,7 +30,7 @@ document_vectors: dict[str, list[list[float]]] = {}
 
 @app.middleware("http")
 async def collect_http_metrics(request: Request, call_next):
-    # Не учитываем scraping самого /metrics.
+    # Do not instrument Prometheus scrapes.
     if request.url.path == "/metrics":
         return await call_next(request)
 
@@ -46,18 +46,19 @@ async def collect_http_metrics(request: Request, call_next):
     finally:
         elapsed = perf_counter() - start
 
-        # Берём шаблон FastAPI-маршрута, а не реальный URL.
+        # Use the registered route template, never the raw path.
         route = request.scope.get("route")
         route_name = getattr(route, "path", "unmatched")
 
+        method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} else "OTHER"
         HTTP_REQUESTS.labels(
-            method=request.method,
+            method=method,
             route=route_name,
             status=str(status_code),
         ).inc()
 
         HTTP_DURATION.labels(
-            method=request.method,
+            method=method,
             route=route_name,
         ).observe(elapsed)
 

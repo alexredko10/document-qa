@@ -1,7 +1,9 @@
 from app.llm.base import LLMClient
+from app.observability.llm import instrument_llm
 
 
 class StubLLM:
+    @instrument_llm("stub")
     def generate(
         self,
         question: str,

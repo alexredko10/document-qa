@@ -6,8 +6,8 @@ metadata:
 spec:
   project: default
 
-  source:
-    repoURL: https://grafana-community.github.io/helm-charts
+  sources:
+  - repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
     targetRevision: 13.5.0
     helm:
@@ -56,11 +56,35 @@ spec:
                 isDefault: true
                 editable: false
 
+        dashboardProviders:
+          dashboardproviders.yaml:
+            apiVersion: 1
+            providers:
+              - name: document-qa
+                orgId: 1
+                folder: ''
+                type: file
+                disableDeletion: false
+                editable: false
+                options:
+                  path: /var/lib/grafana/document-qa-dashboards
+                  updateIntervalSeconds: 30
+
+        extraConfigmapMounts:
+          - name: document-qa-dashboard
+            configMap: document-qa-dashboard
+            mountPath: /var/lib/grafana/document-qa-dashboards
+            readOnly: true
+
         grafana.ini:
           auth.anonymous:
             enabled: false
           users:
             allow_sign_up: false
+
+  - repoURL: https://github.com/alexredko10/document-qa.git
+    targetRevision: main
+    path: document-qa/deploy/grafana
 
   destination:
     server: https://kubernetes.default.svc

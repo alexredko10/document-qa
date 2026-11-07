@@ -1,5 +1,7 @@
 import httpx
 
+from app.observability.llm import instrument_llm, record_usage
+
 UNKNOWN_ANSWER = "I don't know based on the provided document."
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -30,6 +32,7 @@ class OpenRouterLLM:
         self.model = model
         self.client = client or httpx.Client(timeout=20.0)
 
+    @instrument_llm("openrouter")
     def generate(
         self,
         question: str,
@@ -94,6 +97,10 @@ class OpenRouterLLM:
 
         try:
             data = response.json()
+            if not isinstance(data, dict):
+                raise LLMProviderError("invalid_response")
+
+            record_usage("openrouter", data.get("usage"))
 
             if data.get("error"):
                 raise LLMProviderError("provider_error")
