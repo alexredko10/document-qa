@@ -1,0 +1,72 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: prometheus
+    targetRevision: 29.40.3
+    helm:
+      releaseName: prometheus
+      valuesObject:
+        rbac:
+          create: false
+
+        alertmanager:
+          enabled: false
+        kube-state-metrics:
+          enabled: false
+        prometheus-node-exporter:
+          enabled: false
+        prometheus-pushgateway:
+          enabled: false
+
+        # 2 target, without Kubernetes auto-discovery.
+        scrapeConfigs: null
+        extraScrapeConfigs: |
+          - job_name: document-qa
+            scrape_interval: 15s
+            metrics_path: /metrics
+            static_configs:
+              - targets:
+                  - qa-prototype.qa.svc.cluster.local:80
+
+          - job_name: prometheus
+            scrape_interval: 30s
+            static_configs:
+              - targets:
+                  - localhost:9090
+
+        server:
+          automountServiceAccountToken: false
+          retention: 24h
+          retentionSize: 256MB
+
+          persistentVolume:
+            enabled: false
+
+          emptyDir:
+            sizeLimit: 512Mi
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
