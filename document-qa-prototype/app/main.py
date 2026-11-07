@@ -2,11 +2,12 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
+from app.models.ask import AskRequest, AskResponse, SourceChunk
 from app.models.document import DocumentRequest, DocumentResponse
-from app.rag.chunker import split_text
 from app.rag.cleaner import clean_text
 from app.rag.embedder import embed_text
 from app.rag.markdown_chunker import split_markdown
+from app.rag.retriever import search_vectors
 
 app = FastAPI(title="Document QA Prototype")
 
@@ -64,4 +65,34 @@ def document(document_id: str) -> DocumentResponse:
         document_id=document_id,
         status="Document in the storage",
         text=text,
+    )
+
+@app.post("/ask", response_model=AskResponse)
+def ask(request: AskRequest) -> AskResponse:
+
+    if request.document_id not in document_chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    query_vector = embed_text(request.question)
+
+    results = search_vectors(
+        query_vector=query_vector,
+        chunks=document_chunks[request.document_id],
+        vectors=document_vectors[request.document_id],
+        top_k=3,
+    )
+
+    return AskResponse(
+        answer=None,
+        source_chunks=[
+            SourceChunk(
+                index=result.index,
+                text=result.text,
+                score=result.score,
+            )
+            for result in results
+        ],
     )
