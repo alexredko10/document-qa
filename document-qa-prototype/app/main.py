@@ -1,7 +1,10 @@
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 
+from app.llm.openrouter import LLMProviderError
+from app.llm.provider import get_llm
+from app.llm.base import LLMClient
 from app.models.ask import AskRequest, AskResponse, SourceChunk
 from app.models.document import DocumentRequest, DocumentResponse
 from app.rag.cleaner import clean_text
@@ -68,7 +71,8 @@ def document(document_id: str) -> DocumentResponse:
     )
 
 @app.post("/ask", response_model=AskResponse)
-def ask(request: AskRequest) -> AskResponse:
+def ask(request: AskRequest,
+    llm: LLMClient = Depends(get_llm)) -> AskResponse:
 
     if request.document_id not in document_chunks:
         raise HTTPException(
@@ -84,15 +88,38 @@ def ask(request: AskRequest) -> AskResponse:
         vectors=document_vectors[request.document_id],
         top_k=3,
     )
+    if not results:
+        return AskResponse(
+            answer="I don't know based on the provided document.",
+            source_chunks=[],
+        )
+
+    try:
+        answer = llm.generate(
+            question=request.question,
+            context=[item.text for item in results],
+        )
+
+    except LLMProviderError as exc:
+        headers = {}
+
+        if exc.retry_after:
+            headers["Retry-After"] = exc.retry_after
+
+        raise HTTPException(
+            status_code=503,
+            detail="LLM provider unavailable",
+            headers=headers,
+        ) from exc
 
     return AskResponse(
-        answer=None,
+        answer=answer,
         source_chunks=[
             SourceChunk(
-                index=result.index,
-                text=result.text,
-                score=result.score,
+                index=item.index,
+                text=item.text,
+                score=item.score,
             )
-            for result in results
+            for item in results
         ],
     )

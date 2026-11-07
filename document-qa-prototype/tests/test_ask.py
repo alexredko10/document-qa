@@ -27,6 +27,6 @@ def test_ask_retrieves_document_chunks():
 
     data = response.json()
 
-    assert data["answer"] is None
+    assert data["answer"] == text
     assert len(data["source_chunks"]) >= 1
     assert data["source_chunks"][0]["text"] == text
