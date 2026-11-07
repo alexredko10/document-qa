@@ -1,8 +1,12 @@
 from uuid import uuid4
-from app.rag.chunker import split_text
+
 from fastapi import FastAPI, HTTPException
+
 from app.models.document import DocumentRequest, DocumentResponse
+from app.rag.chunker import split_text
+from app.rag.cleaner import clean_text
 from app.rag.embedder import embed_text
+from app.rag.markdown_chunker import split_markdown
 
 app = FastAPI(title="Document QA Prototype")
 
@@ -27,10 +31,15 @@ def create_document(document: DocumentRequest) -> DocumentResponse | HTTPExcepti
             status_code=413,
             detail="Document exceeds 1 MiB",
         )
-    chunks = split_text(document.text)
+    cleaned_text = clean_text(document.text)
+
+    chunks = split_markdown(
+        cleaned_text,
+        chunk_size=800,
+        overlap=120,
+    )
     vectors = [embed_text(chunk) for chunk in chunks]
     document_id = str(uuid4())
-
 
     documents[document_id] = document.text
     document_chunks[document_id] = chunks

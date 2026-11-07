@@ -59,8 +59,9 @@ def test_document_not_found():
     response = client.get("/documents/unknown")
     assert response.status_code == 404
 
+
 def test_document_is_chunked_on_upload():
-    text = "A" * 500 + "B" * 100
+    text = "A" * 800 + "B" * 100
     response = client.post(
         "/documents",
         json={"text": text},
@@ -69,6 +70,28 @@ def test_document_is_chunked_on_upload():
     document_id = response.json()["document_id"]
     chunks = document_chunks[document_id]
     assert chunks == [
-        "A" * 500,
-        "A" * 100 + "B" * 100,
+        "A" * 800,
+        "A" * 120 + "B" * 100,
     ]
+
+def test_markdown_sections_on_upload():
+    text = (
+        "## Rolling Update\n"
+        "Kubernetes updates Pods gradually.\n\n"
+        "## ReplicaSets\n"
+        "ReplicaSets manage Pods."
+    )
+
+    response = client.post(
+        "/documents",
+        json={"text": text},
+    )
+
+    assert response.status_code == 201
+
+    document_id = response.json()["document_id"]
+    chunks = document_chunks[document_id]
+
+    assert len(chunks) == 2
+    assert chunks[0].startswith("## Rolling Update")
+    assert chunks[1].startswith("## ReplicaSets")
