@@ -14,3 +14,9 @@ dev = [
     "pytest",
     "httpx",
 ]
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ['app']
