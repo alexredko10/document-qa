@@ -33,13 +33,6 @@ spec:
             static_configs:
               - targets:
                   - qa-prototype.qa.svc.cluster.local:80
-
-          - job_name: prometheus
-            scrape_interval: 30s
-            static_configs:
-              - targets:
-                  - localhost:9090
-
         server:
           automountServiceAccountToken: false
           retention: 24h
