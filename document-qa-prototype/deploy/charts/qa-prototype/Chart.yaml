@@ -1,0 +1,6 @@
+apiVersion: v2
+name: qa-prototype
+description: Minimal Helm chart for the Document QA prototype
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,7 @@
+# Future K3s deployment. Create Kubernetes Secret separately; NEVER commit API keys.
+# WARNING: the application still uses in-memory documents and is not production-persistent.
+replicaCount: 1
+llm:
+  provider: openrouter
+  model: openrouter/free
+  openRouterSecretName: qa-openrouter

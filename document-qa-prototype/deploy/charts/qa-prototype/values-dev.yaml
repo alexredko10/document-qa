@@ -1,0 +1,4 @@
+# Local k3d: no credentials required. Use exactly one replica with in-memory storage.
+replicaCount: 1
+llm:
+  provider: stub
