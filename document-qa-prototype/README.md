@@ -24,6 +24,38 @@ A future Loki pipeline can ingest these JSON fields and use the request ID for c
 
 From `document-qa-prototype`, start the service with `.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log` and open [http://localhost:8000/demo](http://localhost:8000/demo). The default StubLLM needs no credentials. Select **Load sample**, **Upload document**, and **Ask** to try the suggested question. You can instead paste text or select a local `.txt` file. The service is intended for private access; the console adds no authentication or public ingress.
 
+### Local k6 load test
+
+With k6 installed, start the API in one terminal and run the test in another, both from the repository root. The script is fixed to `127.0.0.1:8000`, uploads one synthetic document, and repeatedly asks a fixed relevant question using the local stub and hash providers:
+
+```sh
+# Terminal 1
+cd document-qa-prototype
+LLM_PROVIDER=stub EMBEDDING_PROVIDER=hash OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="" .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+```sh
+# Terminal 2
+cd document-qa-prototype
+k6 run loadtest/ask.js
+```
+
+The single workload ramps to 5 VUs over 5 seconds, ramps to 10 VUs over the next 5 seconds, holds 10 VUs for 30 seconds, then ramps down to 0 over 10 seconds. k6 reports `/ask` throughput, latency percentiles and error rate; thresholds require HTTP failures below 1%, p95 under 1,000 ms and successful checks above 99%. These results measure the local FastAPI/RAG pipeline, not real OpenRouter latency or cloud capacity.
+
+#### Local k6 benchmark — 8 November 2026
+
+| Metric | Result |
+| --- | --- |
+| Throughput | 1,407 HTTP requests/second |
+| RAG questions (`POST /ask`) | 70,369 |
+| p95 HTTP latency | 8.2 ms |
+| Average HTTP latency | 5.64 ms |
+| HTTP failure rate | 0.00% |
+| Successful checks | 100% (140,738 / 140,738) |
+| k6 thresholds | All passed |
+
+This 50-second run used one ramping-VUs scenario with a maximum of 10 VUs against the local FastAPI server using StubLLM and hash embeddings. It measures the local API and retrieval pipeline, not semantic embedding API calls, real LLM inference latency, or AWS capacity. Results depend on the test environment and workload.
+
 The response keeps `answer` and `source_chunks` and adds `llm`. `invoked` is false for answers resolved locally. For a call, the provider and configured request model come from the selected adapter, latency is measured on the server, and the actual model, token counts and cost are included only when reported and valid. Router IDs such as `openrouter/free` are not treated as the actual responding model. Stub calls identify the actual model as `stub`, without token or cost estimates. OpenRouter usage can be absent, and reported cost may not represent the final account invoice. HTTP duration in the activity table is measured separately in the browser. Activity stays in memory in the current tab; restarting the service or Pod removes uploaded documents.
 
 To correlate a request, copy its request ID from the session activity table and search in Grafana Explore using the Loki datasource and the private log stream, for example `{namespace="qa",app="qa-prototype",container="api"} | json | request_id="your-request-id"`. See the [logging guide](../document-qa/deploy/logging/README.md) for access, examples and retention limitations.
