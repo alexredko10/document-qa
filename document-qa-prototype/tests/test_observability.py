@@ -50,7 +50,18 @@ def test_dashboard_metrics_and_provisioning():
     expressions = ' '.join(t['expr'] for p in dashboard['panels'] for t in p['targets'])
     for name in ('up', 'http_requests_total', 'http_request_duration_seconds_bucket', 'http_requests_in_flight', 'llm_calls_total', 'llm_call_duration_seconds_bucket', 'llm_tokens_total'):
         assert name in expressions
-    assert all(p['datasource']['uid'] == 'prometheus' for p in dashboard['panels'])
+    metrics_panels = [p for p in dashboard['panels'] if p['id'] in range(1, 12)]
+    assert len(metrics_panels) == 11
+    assert {p['id'] for p in metrics_panels} == set(range(1, 12))
+    assert all(p['datasource']['uid'] == 'prometheus' for p in metrics_panels)
+    logs_panels = [p for p in dashboard['panels'] if p['title'] == 'Recent requests']
+    assert len(logs_panels) == 1
+    assert logs_panels[0]['type'] == 'logs'
+    assert logs_panels[0]['datasource']['uid'] == 'loki'
+    assert logs_panels[0]['targets'][0]['expr'] == (
+        '{namespace="qa",app="qa-prototype",container="api"} | json | event="http_request_completed"'
+    )
+    assert len(dashboard['panels']) == 12
     for p in dashboard['panels']:
         for target in p['targets']:
             if 'http_requests_total' in target['expr'] or 'http_request_duration_seconds_bucket' in target['expr']:
