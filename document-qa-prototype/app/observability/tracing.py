@@ -15,6 +15,7 @@ _provider: TracerProvider | None = None
 
 def configure_tracing() -> bool:
     global _provider
+    # An explicit endpoint enables export; local runs work without Tempo.
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
     if not endpoint:
         return False

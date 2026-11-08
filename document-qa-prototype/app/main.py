@@ -34,12 +34,14 @@ tracing.configure_tracing()
 MAX_DOCUMENT_BYTES = 1024 * 1024
 MAX_SEMANTIC_CHUNKS = 256
 # Temporary in-memory storage
+# Process-local state requires one replica until documents and vectors use shared storage.
 documents: dict[str, str] = {}
 document_chunks: dict[str, list[str]] = {}
 document_vectors: dict[str, list[list[float]]] = {}
 document_embedding_config: dict[str, tuple[str, str, int]] = {}
 
 
+# Centralize request correlation, metrics and tracing across HTTP routes.
 @app.middleware("http")
 async def collect_http_metrics(request: Request, call_next):
     correlation_id = request_id(request.headers.get("X-Request-ID"))
@@ -71,6 +73,7 @@ async def collect_http_metrics(request: Request, call_next):
             return response
         finally:
             elapsed = perf_counter() - start
+            # Route templates and bounded methods avoid labels for individual request paths.
             route = request.scope.get("route")
             route_name = getattr(route, "path", "unmatched")
             span.set_attribute("http.route", route_name)
@@ -139,6 +142,7 @@ def create_document(document: DocumentRequest) -> DocumentResponse | HTTPExcepti
         raise HTTPException(status_code=503, detail="Embedding provider unavailable") from exc
     document_id = str(uuid4())
 
+    # Store only after all embeddings validate, avoiding partially indexed documents.
     documents[document_id] = document.text
     document_vectors[document_id] = vectors
     document_embedding_config[document_id] = (provider.provider, provider.model, len(vectors[0]))
@@ -176,6 +180,7 @@ def ask(request: AskRequest,
         if request.document_id not in document_chunks:
             raise HTTPException(status_code=404, detail="Document not found")
         started = perf_counter()
+        # Vectors must share a provider, model and dimensions to be comparable.
         stored_provider, stored_model, dimensions = document_embedding_config[request.document_id]
         try:
             provider = get_embedding_provider()
@@ -203,6 +208,7 @@ def ask(request: AskRequest,
         retrieval = RetrievalMetadata(embedding_provider=stored_provider, embedding_model=stored_model,
                                       retrieval_duration_ms=round((perf_counter() - started) * 1000, 3))
         context = [item.text for item in results]
+        # Hash embeddings capture word overlap rather than semantic similarity.
         if not results or (stored_provider == "hash" and not has_relevant_context(request.question, context)):
             return AskResponse(answer="I don't know based on the provided document.",
                                source_chunks=[], llm=LLMMetadata(), use_context=True, retrieval=retrieval)

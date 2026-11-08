@@ -67,6 +67,7 @@ def instrument_llm(provider, *, require_context=True):
 
 
 def record_usage(provider, usage, model="unknown"):
+    # Count only valid provider-reported tokens; missing usage is not estimated.
     if not isinstance(usage, dict):
         return
     valid = {}

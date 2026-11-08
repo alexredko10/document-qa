@@ -56,4 +56,5 @@ logger = configure_logger()
 
 
 def log_event(event: str, *, level: int = logging.INFO, **fields: object) -> None:
+    # Correlation IDs link events; callers must exclude prompts, documents and credentials.
     logger.log(level, event, extra={"event": event, "correlation_id": request_id_context.get(), "fields": fields})

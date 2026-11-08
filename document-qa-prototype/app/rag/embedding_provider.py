@@ -103,6 +103,7 @@ class OpenRouterEmbeddings:
         if not texts:
             raise EmbeddingError('invalid_response')
         vectors = []
+        # Bound provider batches and reject dimension changes between them.
         for offset in range(0, len(texts), BATCH_SIZE):
             batch = texts[offset:offset + BATCH_SIZE]
             def fetch_batch():
@@ -170,6 +171,7 @@ class OpenRouterEmbeddings:
         )
         if not model_matches or not isinstance(data.get('data'), list) or len(data['data']) != len(texts):
             raise EmbeddingError('invalid_response')
+        # Restore input order and reject duplicate indices before pairing vectors with chunks.
         ordered = [None] * len(texts)
         for item in data['data']:
             if not isinstance(item, dict):

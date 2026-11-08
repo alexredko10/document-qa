@@ -90,6 +90,7 @@ class OpenRouterLLM:
                 json=payload,
                 timeout=20.0,
             )
+        # Use controlled failure categories instead of exposing transport details.
         except httpx.TimeoutException as exc:
             raise LLMProviderError("timeout") from exc
         except httpx.RequestError as exc:
