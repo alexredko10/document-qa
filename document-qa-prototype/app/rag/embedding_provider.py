@@ -141,7 +141,13 @@ class OpenRouterEmbeddings:
                 EMBEDDING_TOKENS.labels(self.provider).inc(tokens)
                 log_event('embedding_usage_reported', provider=self.provider,
                           model=model_id(self.provider, self), operation=operation, input_tokens=tokens)
-        if data.get('model') != self.model or not isinstance(data.get('data'), list) or len(data['data']) != len(texts):
+        # OpenRouter may omit the provider prefix for this specific model.
+        returned_model = data.get('model')
+        model_matches = returned_model == self.model or (
+            self.model == 'openai/text-embedding-3-small'
+            and returned_model == 'text-embedding-3-small'
+        )
+        if not model_matches or not isinstance(data.get('data'), list) or len(data['data']) != len(texts):
             raise EmbeddingError('invalid_response')
         ordered = [None] * len(texts)
         for item in data['data']:

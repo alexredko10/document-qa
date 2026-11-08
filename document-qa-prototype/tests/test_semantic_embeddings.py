@@ -301,3 +301,42 @@ def test_manual_semantic_smoke_test_ranking(monkeypatch, capsys, dog_vector, exp
             smoke.main()
         assert 'failed' in str(exc.value)
         assert 'private-test-key' not in str(exc.value)
+
+
+@pytest.mark.parametrize(('configured', 'returned', 'accepted'), [
+    (MODEL, MODEL, True),
+    (MODEL, 'text-embedding-3-small', True),
+    (MODEL, 'text-embedding-3-large', False),
+    ('another/text-embedding-3-small', 'text-embedding-3-small', False),
+])
+def test_openrouter_response_model_validation(configured, returned, accepted):
+    def handler(request):
+        return httpx.Response(200, json={'model': returned, 'data': [{'index': 0, 'embedding': [1., 0.]}]})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenRouterEmbeddings('test-key', model=configured, client=client)
+        if accepted:
+            assert provider.embed(['synthetic'], 'query') == [[1., 0.]]
+        else:
+            with pytest.raises(EmbeddingError) as exc:
+                provider.embed(['synthetic'], 'query')
+            assert exc.value.reason == 'invalid_response'
+
+
+def test_shortened_model_supports_document_and_question(monkeypatch):
+    requests = []
+    def handler(request):
+        payload = json.loads(request.content)
+        requests.append(payload)
+        return httpx.Response(200, json={'model': 'text-embedding-3-small', 'data': [{'index': i, 'embedding': [1., 0.]} for i in range(len(payload['input']))]})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        monkeypatch.setattr(main, 'get_embedding_provider', lambda: OpenRouterEmbeddings('test-key', client=client))
+        with TestClient(main.app) as api:
+            created = api.post('/documents', json={'text': 'A synthetic document about dogs.'})
+            assert created.status_code == 201
+            document_id = created.json()['document_id']
+            result = api.post('/ask', json={'document_id': document_id, 'question': 'puppy companion'})
+    assert result.status_code == 200
+    assert result.json()['source_chunks']
+    assert result.json()['retrieval']['embedding_model'] == MODEL
+    assert main.document_embedding_config[document_id] == ('openrouter', MODEL, 2)
+    assert len(requests) == 2 and all(request['model'] == MODEL for request in requests)
