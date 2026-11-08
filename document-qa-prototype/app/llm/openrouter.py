@@ -1,4 +1,8 @@
+import math
+
 import httpx
+
+from app.llm.metadata import update_metadata
 
 from app.observability.llm import instrument_llm, record_usage
 from app.observability.logging import model_id
@@ -102,6 +106,22 @@ class OpenRouterLLM:
                 raise LLMProviderError("invalid_response")
 
             record_usage("openrouter", data.get("usage"), model_id("openrouter", self))
+            metadata = {}
+            actual_model = data.get("model")
+            if (isinstance(actual_model, str) and actual_model.strip()
+                    and actual_model not in {"openrouter/free", "openrouter/auto"}):
+                metadata["actual_model"] = actual_model
+            usage = data.get("usage")
+            if isinstance(usage, dict):
+                for source, target in (("prompt_tokens", "input_tokens"), ("completion_tokens", "output_tokens")):
+                    value = usage.get(source)
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        metadata[target] = value
+                cost = usage.get("cost")
+                if (isinstance(cost, (int, float)) and not isinstance(cost, bool)
+                        and 0 <= cost <= 1e100 and math.isfinite(cost)):
+                    metadata["cost_usd"] = cost
+            update_metadata(**metadata)
 
             if data.get("error"):
                 raise LLMProviderError("provider_error")

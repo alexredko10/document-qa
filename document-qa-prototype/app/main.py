@@ -1,14 +1,16 @@
 import logging
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Depends,Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
+from fastapi.responses import FileResponse, PlainTextResponse
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
 from app.llm.base import LLMClient
+from app.llm.metadata import metadata_context
 from app.llm.relevance import has_relevant_context
-from app.models.ask import AskRequest, AskResponse, SourceChunk
+from app.models.ask import AskRequest, AskResponse, SourceChunk, LLMMetadata
 from app.models.document import DocumentRequest, DocumentResponse
 from app.rag.cleaner import clean_text
 from app.rag.embedder import embed_text
@@ -23,6 +25,7 @@ from app.observability.metrics import (
     HTTP_DURATION,
     HTTP_IN_FLIGHT,
 )
+
 app = FastAPI(title="Document QA Prototype")
 
 MAX_DOCUMENT_BYTES = 1024 * 1024
@@ -31,6 +34,7 @@ documents: dict[str, str] = {}
 document_chunks: dict[str, list[str]] = {}
 document_vectors: dict[str, list[list[float]]] = {}
 
+
 @app.middleware("http")
 async def collect_http_metrics(request: Request, call_next):
     correlation_id = request_id(request.headers.get("X-Request-ID"))
@@ -38,7 +42,8 @@ async def collect_http_metrics(request: Request, call_next):
     path = request.url.path
     scrape = path == "/metrics"
     quiet = path in {"/metrics", "/healthz"}
-    method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} else "OTHER"
+    method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD",
+                                                  "OPTIONS"} else "OTHER"
     start = perf_counter()
     status_code = 500
     failed = False
@@ -70,6 +75,22 @@ async def collect_http_metrics(request: Request, call_next):
                           status_code=status_code, duration_ms=round(elapsed * 1000, 3))
         finally:
             request_id_context.reset(token)
+
+
+DEMO_DIR = Path(__file__).resolve().parent / "demo"
+
+
+@app.get("/demo", include_in_schema=False)
+def demo():
+    return FileResponse(DEMO_DIR / "index.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/demo/{asset}", include_in_schema=False)
+def demo_asset(asset: str):
+    if asset not in {"console.css", "console.js"}:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(DEMO_DIR / asset)
+
 
 @app.get("/healthz")
 def health():
@@ -142,6 +163,7 @@ def ask(request: AskRequest,
         return AskResponse(
             answer="I don't know based on the provided document.",
             source_chunks=[],
+            llm=LLMMetadata(),
         )
 
     try:
@@ -150,11 +172,17 @@ def ask(request: AskRequest,
             return AskResponse(
                 answer="I don't know based on the provided document.",
                 source_chunks=[],
+                llm=LLMMetadata(),
             )
-        answer = llm.generate(
-            question=request.question,
-            context=context,
-        )
+        metadata = {}
+        token = metadata_context.set(metadata)
+        try:
+            answer = llm.generate(
+                question=request.question,
+                context=context,
+            )
+        finally:
+            metadata_context.reset(token)
 
     except LLMProviderError as exc:
         headers = {}
@@ -168,6 +196,7 @@ def ask(request: AskRequest,
 
     return AskResponse(
         answer=answer,
+        llm=LLMMetadata(**metadata),
         source_chunks=[
             SourceChunk(
                 index=item.index,
@@ -177,6 +206,7 @@ def ask(request: AskRequest,
             for item in results
         ],
     )
+
 
 @app.get("/metrics", include_in_schema=False)
 def metrics() -> Response:

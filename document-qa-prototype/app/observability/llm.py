@@ -5,6 +5,7 @@ from time import perf_counter
 from prometheus_client import Counter, Histogram
 
 from app.observability.logging import log_event, model_id
+from app.llm.metadata import update_metadata
 
 LLM_CALLS = Counter("llm_calls_total", "LLM calls by provider and outcome", ["provider", "outcome"])
 LLM_DURATION = Histogram(
@@ -28,6 +29,9 @@ def instrument_llm(provider):
             outcome = "success"
             reason = None
             model = model_id(provider, args[0])
+            update_metadata(invoked=True, provider=provider,
+                            requested_model=getattr(args[0], "model", None) if provider == "openrouter" else None,
+                            actual_model="stub" if provider == "stub" else None)
             try:
                 return func(*args, **kwargs)
             except Exception as exc:
@@ -39,6 +43,7 @@ def instrument_llm(provider):
                 LLM_CALLS.labels(provider, outcome).inc()
                 elapsed = perf_counter() - start
                 LLM_DURATION.labels(provider).observe(elapsed)
+                update_metadata(duration_ms=round(elapsed * 1000, 3))
                 fields = {"provider": provider, "model": model, "outcome": outcome, "duration_ms": round(elapsed * 1000, 3)}
                 if reason is not None:
                     fields["reason"] = reason

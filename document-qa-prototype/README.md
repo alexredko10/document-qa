@@ -19,3 +19,11 @@ kubectl logs -n qa deployment/qa-prototype --since=15m | jq -R 'fromjson? | sele
 ```
 
 A future Loki pipeline can ingest these JSON fields and use the request ID for correlation; future OpenTelemetry instrumentation can add real trace context. Neither is installed or simulated here.
+
+## Demo console
+
+From `document-qa-prototype`, start the service with `.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log` and open [http://localhost:8000/demo](http://localhost:8000/demo). The default StubLLM needs no credentials. Select **Load sample**, **Upload document**, and **Ask** to try the suggested question. You can instead paste text or select a local `.txt` file. The service is intended for private access; the console adds no authentication or public ingress.
+
+The response keeps `answer` and `source_chunks` and adds `llm`. `invoked` is false for answers resolved locally. For a call, the provider and configured request model come from the selected adapter, latency is measured on the server, and the actual model, token counts and cost are included only when reported and valid. Router IDs such as `openrouter/free` are not treated as the actual responding model. Stub calls identify the actual model as `stub`, without token or cost estimates. OpenRouter usage can be absent, and reported cost may not represent the final account invoice. HTTP duration in the activity table is measured separately in the browser. Activity stays in memory in the current tab; restarting the service or Pod removes uploaded documents.
+
+To correlate a request, copy its request ID from the session activity table and search in Grafana Explore using the Loki datasource and the private log stream, for example `{namespace="qa",app="qa-prototype",container="api"} | json | request_id="your-request-id"`. See the [logging guide](../document-qa/deploy/logging/README.md) for access, examples and retention limitations.

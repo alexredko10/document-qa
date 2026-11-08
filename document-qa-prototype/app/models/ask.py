@@ -19,6 +19,18 @@ class SourceChunk(BaseModel):
     score: float
 
 
+class LLMMetadata(BaseModel):
+    invoked: bool = False
+    provider: str | None = None
+    requested_model: str | None = None
+    actual_model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    duration_ms: float | None = None
+    cost_usd: float | None = None
+
+
 class AskResponse(BaseModel):
     answer: str | None = None
     source_chunks: list[SourceChunk]
+    llm: LLMMetadata | None = None
