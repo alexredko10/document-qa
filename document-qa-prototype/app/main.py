@@ -1,7 +1,9 @@
+import logging
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Depends,Request, Response
+from fastapi.responses import PlainTextResponse
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
 from app.llm.base import LLMClient
@@ -15,6 +17,7 @@ from app.rag.retriever import search_vectors
 
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from app.observability.logging import log_event, request_id, request_id_context
 from app.observability.metrics import (
     HTTP_REQUESTS,
     HTTP_DURATION,
@@ -30,39 +33,43 @@ document_vectors: dict[str, list[list[float]]] = {}
 
 @app.middleware("http")
 async def collect_http_metrics(request: Request, call_next):
-    # Do not instrument Prometheus scrapes.
-    if request.url.path == "/metrics":
-        return await call_next(request)
-
-    HTTP_IN_FLIGHT.inc()
+    correlation_id = request_id(request.headers.get("X-Request-ID"))
+    token = request_id_context.set(correlation_id)
+    path = request.url.path
+    scrape = path == "/metrics"
+    quiet = path in {"/metrics", "/healthz"}
+    method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} else "OTHER"
     start = perf_counter()
     status_code = 500
-
+    failed = False
+    if not scrape:
+        HTTP_IN_FLIGHT.inc()
     try:
-        response = await call_next(request)
-        status_code = response.status_code
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception:
+            failed = True
+            response = PlainTextResponse("Internal Server Error", status_code=500)
+        response.headers["X-Request-ID"] = correlation_id
         return response
-
     finally:
         elapsed = perf_counter() - start
-
-        # Use the registered route template, never the raw path.
         route = request.scope.get("route")
         route_name = getattr(route, "path", "unmatched")
-
-        method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} else "OTHER"
-        HTTP_REQUESTS.labels(
-            method=method,
-            route=route_name,
-            status=str(status_code),
-        ).inc()
-
-        HTTP_DURATION.labels(
-            method=method,
-            route=route_name,
-        ).observe(elapsed)
-
-        HTTP_IN_FLIGHT.dec()
+        try:
+            if not scrape:
+                HTTP_REQUESTS.labels(method=method, route=route_name, status=str(status_code)).inc()
+                HTTP_DURATION.labels(method=method, route=route_name).observe(elapsed)
+                HTTP_IN_FLIGHT.dec()
+            if failed:
+                log_event("http_request_failed", level=logging.ERROR, method=method,
+                          route=route_name, reason="unexpected_error")
+            if not quiet:
+                log_event("http_request_completed", method=method, route=route_name,
+                          status_code=status_code, duration_ms=round(elapsed * 1000, 3))
+        finally:
+            request_id_context.reset(token)
 
 @app.get("/healthz")
 def health():

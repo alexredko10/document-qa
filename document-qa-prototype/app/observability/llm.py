@@ -4,6 +4,8 @@ from time import perf_counter
 
 from prometheus_client import Counter, Histogram
 
+from app.observability.logging import log_event, model_id
+
 LLM_CALLS = Counter("llm_calls_total", "LLM calls by provider and outcome", ["provider", "outcome"])
 LLM_DURATION = Histogram(
     "llm_call_duration_seconds",
@@ -24,23 +26,35 @@ def instrument_llm(provider):
                 return func(*args, **kwargs)
             start = perf_counter()
             outcome = "success"
+            reason = None
+            model = model_id(provider, args[0])
             try:
                 return func(*args, **kwargs)
             except Exception as exc:
-                reason = getattr(exc, "reason", "")
-                outcome = reason if reason in {"timeout", "rate_limited"} else "error"
+                raw_reason = getattr(exc, "reason", "")
+                outcome = raw_reason if raw_reason in {"timeout", "rate_limited"} else "error"
+                reason = raw_reason if raw_reason in {"timeout", "rate_limited", "connection_error", "provider_error", "invalid_response", "empty_response"} else "error"
                 raise
             finally:
                 LLM_CALLS.labels(provider, outcome).inc()
-                LLM_DURATION.labels(provider).observe(perf_counter() - start)
+                elapsed = perf_counter() - start
+                LLM_DURATION.labels(provider).observe(elapsed)
+                fields = {"provider": provider, "model": model, "outcome": outcome, "duration_ms": round(elapsed * 1000, 3)}
+                if reason is not None:
+                    fields["reason"] = reason
+                log_event("llm_call_completed", **fields)
         return wrapped
     return decorate
 
 
-def record_usage(provider, usage):
+def record_usage(provider, usage, model="unknown"):
     if not isinstance(usage, dict):
         return
+    valid = {}
     for field, direction in (("prompt_tokens", "input"), ("completion_tokens", "output")):
         value = usage.get(field)
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
             LLM_TOKENS.labels(provider, direction).inc(value)
+            valid[f"{direction}_tokens"] = value
+    if valid:
+        log_event("llm_usage_reported", provider=provider, model=model, **valid)

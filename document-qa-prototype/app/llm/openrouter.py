@@ -1,6 +1,7 @@
 import httpx
 
 from app.observability.llm import instrument_llm, record_usage
+from app.observability.logging import model_id
 
 UNKNOWN_ANSWER = "I don't know based on the provided document."
 
@@ -100,7 +101,7 @@ class OpenRouterLLM:
             if not isinstance(data, dict):
                 raise LLMProviderError("invalid_response")
 
-            record_usage("openrouter", data.get("usage"))
+            record_usage("openrouter", data.get("usage"), model_id("openrouter", self))
 
             if data.get("error"):
                 raise LLMProviderError("provider_error")
