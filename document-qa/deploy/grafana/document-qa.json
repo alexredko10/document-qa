@@ -368,6 +368,44 @@
           "legendFormat": "{{provider}} / {{direction}}"
         }
       ]
+    },
+    {
+      "id": 12,
+      "title": "Recent requests",
+      "type": "logs",
+      "description": "Completed HTTP request events. Open a log's details and choose View Trace to inspect its spans.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{namespace=\"qa\",app=\"qa-prototype\",container=\"api\"} | json | event=\"http_request_completed\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
     }
   ]
 }
