@@ -60,6 +60,50 @@ spec:
           retention: 24h
           retentionSize: 256MB
 
+        # Minimum volumes keep percentage and percentile alerts useful at lab traffic levels.
+        serverFiles:
+          alerting_rules.yml:
+            groups:
+              - name: document-qa
+                rules:
+                  - alert: DocumentQADown
+                    expr: up{job="document-qa"} == 0
+                    for: 2m
+                    labels:
+                      severity: critical
+                    annotations:
+                      summary: Document QA scrape target is down
+                      description: Prometheus has failed to scrape the application target for 2 minutes.
+                  - alert: DocumentQAHighErrorRate
+                    expr: |
+                      (
+                        sum(rate(http_requests_total{job="document-qa",route!~"/healthz|/metrics",status=~"5.."}[5m]))
+                        /
+                        sum(rate(http_requests_total{job="document-qa",route!~"/healthz|/metrics"}[5m]))
+                      ) > 0.01
+                      and
+                      sum(increase(http_requests_total{job="document-qa",route!~"/healthz|/metrics"}[5m])) >= 20
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: Document QA HTTP 5xx rate is above 1%
+                      description: More than 1% of eligible requests returned 5xx, with at least 20 requests in the last 5 minutes.
+                  - alert: DocumentQASlowLLM
+                    expr: |
+                      histogram_quantile(
+                        0.95,
+                        sum by (le) (rate(llm_call_duration_seconds_bucket{job="document-qa",provider="openrouter"}[10m]))
+                      ) > 20
+                      and
+                      sum(increase(llm_call_duration_seconds_count{job="document-qa",provider="openrouter"}[10m])) >= 20
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: Document QA OpenRouter p95 latency is above 20 seconds
+                      description: OpenRouter p95 latency has exceeded 20 seconds with at least 20 calls in the last 10 minutes.
+
           persistentVolume:
             enabled: false
 

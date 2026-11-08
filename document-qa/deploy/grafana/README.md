@@ -6,23 +6,27 @@ HTTP metrics retain their names and labels; unmatched paths use `unmatched`, non
 
 Token counters represent provider-reported consumption, including valid usage returned with a provider error or a response that fails subsequent validation. They do not represent only successful answers; absent or invalid usage is not estimated, and the stub produces no token counts.
 
-## SLOs and proposed alerts
+## Lab SLOs and Prometheus alerts
 
-Eligible requests exclude `route=~"/healthz|/metrics"`. Evaluate these only with at least 30 days of retained samples; the current Prometheus has **24-hour retention and ephemeral storage**, so it cannot evaluate these 30-day SLOs reliably, especially across restarts. Durable 30-day storage is a separate operational decision. Missing data or no requests means insufficient data, not a successful SLO.
+These are demonstration targets, not long-term service commitments:
 
-Availability objective: at least 99.5% of eligible requests return non-5xx in 30 days:
+- Availability: at least 99% of eligible HTTP requests return non-5xx over a rolling 24 hours.
+- LLM latency: OpenRouter call p95 stays below 20 seconds.
+- Monitoring: the `document-qa` scrape target remains reachable.
 
-```promql
-1 - (sum(increase(http_requests_total{route!~"/healthz|/metrics",status=~"5.."}[30d])) or vector(0)) / sum(increase(http_requests_total{route!~"/healthz|/metrics"}[30d]))
-```
-
-Latency objective: at least 95% of eligible requests finish at or below 1 second in 30 days (the `le="1.0"` histogram bucket includes its boundary):
+Eligible HTTP requests exclude `/healthz` and `/metrics`. Example queries for the first two targets:
 
 ```promql
-sum(increase(http_request_duration_seconds_bucket{route!~"/healthz|/metrics",le="1.0"}[30d])) / sum(increase(http_request_duration_seconds_count{route!~"/healthz|/metrics"}[30d]))
+1 - (sum(increase(http_requests_total{job="document-qa",route!~"/healthz|/metrics",status=~"5.."}[24h])) or vector(0)) / sum(increase(http_requests_total{job="document-qa",route!~"/healthz|/metrics"}[24h]))
 ```
 
-Proposed alert expressions, after sufficient retention and traffic, are the respective expressions above followed by `< 0.995` and `< 0.95`, with `for: 15m`. Also alert separately on `up{job="document-qa"} == 0` and `absent(up{job="document-qa"})`. These are proposals only; alert rules and delivery are not deployed. A 30-day trailing SLO breach is slow to detect; add burn-rate alerts once alerting and reliable storage exist.
+```promql
+histogram_quantile(0.95, sum by (le) (rate(llm_call_duration_seconds_bucket{job="document-qa",provider="openrouter"}[24h])))
+```
+
+The pinned Prometheus chart loads `serverFiles.alerting_rules.yml` from `/etc/config/alerting_rules.yml`. It contains exactly three rules: `DocumentQADown` fires when `up{job="document-qa"} == 0` for 2 minutes; `DocumentQAHighErrorRate` fires when eligible 5xx exceed 1% over 5 minutes, only with at least 20 requests in that window, for 5 minutes; and `DocumentQASlowLLM` fires when OpenRouter p95 exceeds 20 seconds over 10 minutes, only with at least 20 calls in that window, for 5 minutes. The minimum-volume guards avoid reacting to unstable percentages or quantiles from a handful of calls.
+
+Prometheus is configured for **24-hour retention**, capped at 256 MiB, on ephemeral storage; a restart or node loss can erase that history. The availability and latency views are best-effort lab measurements: with little or no traffic, the volume guards can keep alerts inactive and targets may be unevaluable, not successful. `DocumentQADown` detects failed scrapes, but does not fire if its time series disappears entirely. Alertmanager remains disabled: Prometheus evaluates and displays pending/firing states under **Alerts**, but sends no email, Slack, pager, or other notifications.
 
 Runbook: check target availability and scrape configuration first; inspect HTTP route/status and latency panels, then LLM failures and latency. Check application and provider logs without exposing prompts or credentials. For rate limits/timeouts check provider status and configuration; for application errors inspect recent changes and roll back if needed. Confirm recovery and review impact. If data is missing, check Prometheus retention, restart history and scraping before interpreting an SLO.
 
@@ -32,4 +36,4 @@ From the repository root run `(cd document-qa-prototype && .venv/bin/python -m p
 
 The Applications are manually bootstrapped: after reviewing and committing a revision available at `main`, the operator must apply the updated `document-qa/deploy/argocd/grafana.yaml` Application once using their approved Argo CD bootstrap procedure. A Git push alone does not update that Application. Argo CD then syncs the chart and Git dashboard source. Do not expose the services publicly.
 
-For rollback, revert the reviewed Git changes and apply the previous Grafana Application manifest through the same bootstrap procedure, then sync and inspect Argo CD. The old Application removes the dashboard mount/provider; because prune is disabled, the ConfigMap may remain and can be removed separately by an operator after verification. Roll back the application deployment to its prior revision using its normal Argo CD procedure. No changes here deploy alerts or alter infrastructure.
+For rollback, revert the reviewed Git changes and apply the previous Grafana Application manifest through the same bootstrap procedure, then sync and inspect Argo CD. The old Application removes the dashboard mount/provider; because prune is disabled, the ConfigMap may remain and can be removed separately by an operator after verification. Roll back the application deployment to its prior revision using its normal Argo CD procedure.
