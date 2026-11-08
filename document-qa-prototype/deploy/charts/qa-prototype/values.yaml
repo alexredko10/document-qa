@@ -10,6 +10,10 @@ llm:
   model: openrouter/free
   openRouterSecretName: qa-openrouter
 
+embedding:
+  provider: hash
+  model: openai/text-embedding-3-small
+
 service:
   port: 80
 

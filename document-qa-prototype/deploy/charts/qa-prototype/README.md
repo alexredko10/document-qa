@@ -17,3 +17,5 @@ helm lint ./document-qa-prototype/deploy/charts/qa-prototype \
   -f ./document-qa-prototype/deploy/charts/qa-prototype/values-dev.yaml \
   --set-string image.digest="$DIGEST"
 ```
+
+Embedding configuration is independent of generation: `embedding.provider` defaults to `hash` and `embedding.model` defaults to `openai/text-embedding-3-small`. Selecting `embedding.provider=openrouter` references the existing `llm.openRouterSecretName` / `OPENROUTER_API_KEY` Secret even when `llm.provider=stub`. No Secret is created by this chart. Changing embedding provider or model requires re-uploading in-memory documents; see the prototype README for cost, privacy and retention limitations.

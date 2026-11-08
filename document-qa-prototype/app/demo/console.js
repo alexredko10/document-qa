@@ -21,7 +21,7 @@ function markChanged() {
   documentId = null;
   show('answer', 'Your answer will appear here.');
   show('source-count', '0'); $('source-list').replaceChildren(); $('sources').open = false;
-  renderMetadata(null); $('comparison').replaceChildren(); $('comparison').hidden = true; $('single-result').hidden = false;
+  renderMetadata(null); show('retrieval', '—'); $('comparison').replaceChildren(); $('comparison').hidden = true; $('single-result').hidden = false;
   $('document-status').classList.remove('ready');
   show('document-status', 'Document changed · upload to continue');
   setBusy(busy);
@@ -37,7 +37,7 @@ $('file').addEventListener('change', async event => {
   catch { show('file-name', 'Could not read this file.'); }
 });
 $('use-context').addEventListener('change', () => { setBusy(busy); show('ask-status', $('use-context').checked && !documentId ? 'Upload a document to get started.' : 'Ready to ask.'); });
-const errors = {501:'Context-free answers require a real generative provider; StubLLM does not support this mode.', 404:'Document not found. Upload it again; the service may have restarted.', 413:'Document is too large. The limit is 1 MiB.', 422:'Please check the document or question and try again.', 429:'Too many requests. Please wait and try again.', 503:'The language model is unavailable. Please try again later.'};
+const errors = {501:'Context-free answers require a real generative provider; StubLLM does not support this mode.', 404:'Document not found. Upload it again; the service may have restarted.', 413:'Document exceeds the 1 MiB or semantic indexing chunk limit.', 422:'Please check the document or question and try again.', 429:'Too many requests. Please wait and try again.', 503:'The embedding or language model service is unavailable or incompatible. Please try again or re-upload the document.'};
 function renderActivity() {
   const body = $('activity-body'); body.replaceChildren();
   if (!activity.length) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 6; td.className = 'empty'; td.textContent = 'No activity yet. Your requests will appear here.'; tr.append(td); body.append(tr); return; }
@@ -85,6 +85,7 @@ $('ask').addEventListener('click', async () => {
   try {
     const {data, entry} = await request($('use-context').checked ? 'Ask · RAG' : 'Ask · no RAG', '/ask', {document_id:documentId, question, use_context:$('use-context').checked});
     $('comparison').hidden = true; $('single-result').hidden = false;
+    show('retrieval', retrievalLabel(data.retrieval));
     show('single-mode', data.use_context ? 'With RAG' : 'Without RAG'); show('single-request-id', entry.requestId); show('single-http-duration', `${entry.duration} ms`);
     $('sources').hidden = !data.use_context;
     show('answer', data.answer || 'No answer returned.'); show('source-count', data.source_chunks.length); $('source-list').replaceChildren();
@@ -95,6 +96,11 @@ $('ask').addEventListener('click', async () => {
 });
 $('question').addEventListener('keydown', event => { if (event.key === 'Enter' && !$('ask').disabled) { event.preventDefault(); $('ask').click(); } });
 
+function retrievalLabel(retrieval) {
+  if (!retrieval?.embedding_provider) return 'N/A';
+  const kind = retrieval.embedding_provider === 'hash' ? 'SHA-256 lexical baseline' : 'Semantic embeddings';
+  return `${kind} · ${display(retrieval.embedding_model)} · ${display(retrieval.retrieval_duration_ms)} ms`;
+}
 function comparisonResult(mode, result) {
   const section = document.createElement('section'); section.className = 'comparison-result';
   const title = document.createElement('h3'); title.textContent = mode ? 'With RAG' : 'Without RAG'; section.append(title);
@@ -102,7 +108,7 @@ function comparisonResult(mode, result) {
   const entry = result.status === 'fulfilled' ? result.value.entry : result.reason.entry;
   const info = result.status === 'fulfilled' ? result.value.data.llm : null;
   const list = document.createElement('dl');
-  for (const [label, value] of [['Context mode', mode ? 'With RAG' : 'Without RAG'], ['Actual model', display(info?.actual_model)], ['Input / output tokens', `${display(info?.input_tokens)} / ${display(info?.output_tokens)}`], ['LLM duration', info?.duration_ms != null ? `${info.duration_ms} ms` : 'N/A'], ['HTTP duration', entry ? `${entry.duration} ms` : 'N/A'], ['Request ID', entry?.requestId || 'Unavailable']]) {
+  for (const [label, value] of [['Context mode', mode ? 'With RAG' : 'Without RAG'], ['Retrieval', retrievalLabel(result.status === 'fulfilled' ? result.value.data.retrieval : null)], ['Actual model', display(info?.actual_model)], ['Input / output tokens', `${display(info?.input_tokens)} / ${display(info?.output_tokens)}`], ['LLM duration', info?.duration_ms != null ? `${info.duration_ms} ms` : 'N/A'], ['HTTP duration', entry ? `${entry.duration} ms` : 'N/A'], ['Request ID', entry?.requestId || 'Unavailable']]) {
     const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = value; list.append(dt, dd);
   }
   section.append(list);

@@ -4,6 +4,9 @@
 {{- if not (has .Values.llm.provider (list "stub" "openrouter")) }}
 {{- fail "llm.provider must be stub or openrouter" }}
 {{- end }}
+{{- if not (has .Values.embedding.provider (list "hash" "openrouter")) }}
+{{- fail "embedding.provider must be hash or openrouter" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,9 +45,15 @@ spec:
           env:
             - name: LLM_PROVIDER
               value: {{ .Values.llm.provider | quote }}
+            - name: EMBEDDING_PROVIDER
+              value: {{ .Values.embedding.provider | quote }}
+            - name: OPENROUTER_EMBEDDING_MODEL
+              value: {{ .Values.embedding.model | quote }}
             {{- if eq .Values.llm.provider "openrouter" }}
             - name: OPENROUTER_MODEL
               value: {{ .Values.llm.model | quote }}
+            {{- end }}
+            {{- if or (eq .Values.llm.provider "openrouter") (eq .Values.embedding.provider "openrouter") }}
             - name: OPENROUTER_API_KEY
               valueFrom:
                 secretKeyRef:

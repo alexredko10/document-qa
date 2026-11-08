@@ -10,10 +10,11 @@ from app.llm.provider import get_llm
 from app.llm.base import ContextFreeUnavailable, LLMClient
 from app.llm.metadata import metadata_context
 from app.llm.relevance import has_relevant_context
-from app.models.ask import AskRequest, AskResponse, SourceChunk, LLMMetadata
+from app.models.ask import AskRequest, AskResponse, SourceChunk, LLMMetadata, RetrievalMetadata
 from app.models.document import DocumentRequest, DocumentResponse
 from app.rag.cleaner import clean_text
 from app.rag.embedder import embed_text
+from app.rag.embedding_provider import EmbeddingError, get_embedding_provider, validate_vectors
 from app.rag.markdown_chunker import split_markdown
 from app.rag.retriever import search_vectors
 
@@ -29,10 +30,12 @@ from app.observability.metrics import (
 app = FastAPI(title="Document QA Prototype")
 
 MAX_DOCUMENT_BYTES = 1024 * 1024
+MAX_SEMANTIC_CHUNKS = 256
 # Temporary in-memory storage
 documents: dict[str, str] = {}
 document_chunks: dict[str, list[str]] = {}
 document_vectors: dict[str, list[list[float]]] = {}
+document_embedding_config: dict[str, tuple[str, str, int]] = {}
 
 
 @app.middleware("http")
@@ -113,12 +116,21 @@ def create_document(document: DocumentRequest) -> DocumentResponse | HTTPExcepti
         chunk_size=800,
         overlap=120,
     )
-    vectors = [embed_text(chunk) for chunk in chunks]
+    if not chunks:
+        raise HTTPException(status_code=422, detail="Document has no indexable content")
+    try:
+        provider = get_embedding_provider()
+        if provider.provider == 'openrouter' and len(chunks) > MAX_SEMANTIC_CHUNKS:
+            raise HTTPException(status_code=413, detail="Document exceeds the 256-chunk semantic indexing limit")
+        vectors = validate_vectors(provider.embed(chunks, 'document'), len(chunks), allow_zero=provider.provider == 'hash')
+    except EmbeddingError as exc:
+        raise HTTPException(status_code=503, detail="Embedding provider unavailable") from exc
     document_id = str(uuid4())
 
     documents[document_id] = document.text
-    document_chunks[document_id] = chunks
     document_vectors[document_id] = vectors
+    document_embedding_config[document_id] = (provider.provider, provider.model, len(vectors[0]))
+    document_chunks[document_id] = chunks
 
     return DocumentResponse(
         document_id=document_id,
@@ -147,20 +159,34 @@ def ask(request: AskRequest,
         llm: LLMClient = Depends(get_llm)) -> AskResponse:
     log_event("ask_request_received", context_mode="rag" if request.use_context else "no_rag")
     results = []
+    retrieval = None
     if request.use_context:
         if request.document_id not in document_chunks:
             raise HTTPException(status_code=404, detail="Document not found")
-        query_vector = embed_text(request.question)
+        started = perf_counter()
+        stored_provider, stored_model, dimensions = document_embedding_config[request.document_id]
+        try:
+            provider = get_embedding_provider()
+            if (provider.provider, provider.model) != (stored_provider, stored_model):
+                raise EmbeddingError('incompatible_model')
+            query_vector = validate_vectors(provider.embed([request.question], 'query'), 1, allow_zero=provider.provider == 'hash')[0]
+            if len(query_vector) != dimensions:
+                raise EmbeddingError('incompatible_dimensions')
+        except EmbeddingError as exc:
+            raise HTTPException(status_code=503, detail="Embedding provider unavailable or incompatible; re-upload the document if configuration changed") from exc
         results = search_vectors(
             query_vector=query_vector,
             chunks=document_chunks[request.document_id],
             vectors=document_vectors[request.document_id],
             top_k=3,
+            positive_only=stored_provider == 'hash',
         )
+        retrieval = RetrievalMetadata(embedding_provider=stored_provider, embedding_model=stored_model,
+                                      retrieval_duration_ms=round((perf_counter() - started) * 1000, 3))
         context = [item.text for item in results]
-        if not results or not has_relevant_context(request.question, context):
+        if not results or (stored_provider == "hash" and not has_relevant_context(request.question, context)):
             return AskResponse(answer="I don't know based on the provided document.",
-                               source_chunks=[], llm=LLMMetadata(), use_context=True)
+                               source_chunks=[], llm=LLMMetadata(), use_context=True, retrieval=retrieval)
 
     try:
         metadata = {}
@@ -184,6 +210,7 @@ def ask(request: AskRequest,
         answer=answer,
         llm=LLMMetadata(**metadata),
         use_context=request.use_context,
+        retrieval=retrieval,
         source_chunks=[SourceChunk(index=item.index, text=item.text, score=item.score) for item in results],
     )
 

@@ -37,8 +37,15 @@ class LLMMetadata(BaseModel):
     cost_usd: float | None = None
 
 
+class RetrievalMetadata(BaseModel):
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    retrieval_duration_ms: float | None = None
+
+
 class AskResponse(BaseModel):
     answer: str | None = None
     source_chunks: list[SourceChunk]
     llm: LLMMetadata | None = None
     use_context: bool = True
+    retrieval: RetrievalMetadata | None = None
