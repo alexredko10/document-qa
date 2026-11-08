@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  digest: "sha256:c03beb1aa371e9d90afef770361174f3e00d8696d895d7fbe5c4f380d0b4ecb0"
+  digest: "sha256:aa4da673d738c9979eab47b12e36c0a7f0128783b2c87fa643dd3797ef0f3d60"
 
 # llm:
 #   provider: stub
