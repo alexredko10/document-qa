@@ -17,13 +17,13 @@ LLM_DURATION = Histogram(
 LLM_TOKENS = Counter("llm_tokens_total", "Provider-reported tokens", ["provider", "direction"])
 
 
-def instrument_llm(provider):
+def instrument_llm(provider, *, require_context=True):
     def decorate(func):
         @wraps(func)
         def wrapped(*args, **kwargs):
             # An empty context is handled locally and makes no provider call.
             context = kwargs.get("context", args[2] if len(args) > 2 else None)
-            if not context:
+            if require_context and not context:
                 return func(*args, **kwargs)
             start = perf_counter()
             outcome = "success"

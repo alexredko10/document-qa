@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
-from app.llm.base import LLMClient
+from app.llm.base import ContextFreeUnavailable, LLMClient
 from app.llm.metadata import metadata_context
 from app.llm.relevance import has_relevant_context
 from app.models.ask import AskRequest, AskResponse, SourceChunk, LLMMetadata
@@ -145,68 +145,47 @@ def document(document_id: str) -> DocumentResponse:
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest,
         llm: LLMClient = Depends(get_llm)) -> AskResponse:
-    if request.document_id not in document_chunks:
-        raise HTTPException(
-            status_code=404,
-            detail="Document not found",
+    log_event("ask_request_received", context_mode="rag" if request.use_context else "no_rag")
+    results = []
+    if request.use_context:
+        if request.document_id not in document_chunks:
+            raise HTTPException(status_code=404, detail="Document not found")
+        query_vector = embed_text(request.question)
+        results = search_vectors(
+            query_vector=query_vector,
+            chunks=document_chunks[request.document_id],
+            vectors=document_vectors[request.document_id],
+            top_k=3,
         )
-
-    query_vector = embed_text(request.question)
-
-    results = search_vectors(
-        query_vector=query_vector,
-        chunks=document_chunks[request.document_id],
-        vectors=document_vectors[request.document_id],
-        top_k=3,
-    )
-    if not results:
-        return AskResponse(
-            answer="I don't know based on the provided document.",
-            source_chunks=[],
-            llm=LLMMetadata(),
-        )
+        context = [item.text for item in results]
+        if not results or not has_relevant_context(request.question, context):
+            return AskResponse(answer="I don't know based on the provided document.",
+                               source_chunks=[], llm=LLMMetadata(), use_context=True)
 
     try:
-        context = [item.text for item in results]
-        if not has_relevant_context(request.question, context):
-            return AskResponse(
-                answer="I don't know based on the provided document.",
-                source_chunks=[],
-                llm=LLMMetadata(),
-            )
         metadata = {}
         token = metadata_context.set(metadata)
         try:
-            answer = llm.generate(
-                question=request.question,
-                context=context,
-            )
+            if request.use_context:
+                answer = llm.generate(question=request.question, context=context)
+            else:
+                answer = llm.generate_without_context(question=request.question)
         finally:
             metadata_context.reset(token)
-
+    except ContextFreeUnavailable as exc:
+        raise HTTPException(status_code=501, detail="Context-free answers require a real generative provider; StubLLM does not support this mode.") from exc
     except LLMProviderError as exc:
         headers = {}
         if exc.retry_after:
             headers["Retry-After"] = exc.retry_after
-        raise HTTPException(
-            status_code=503,
-            detail="LLM provider unavailable",
-            headers=headers,
-        ) from exc
+        raise HTTPException(status_code=503, detail="LLM provider unavailable", headers=headers) from exc
 
     return AskResponse(
         answer=answer,
         llm=LLMMetadata(**metadata),
-        source_chunks=[
-            SourceChunk(
-                index=item.index,
-                text=item.text,
-                score=item.score,
-            )
-            for item in results
-        ],
+        use_context=request.use_context,
+        source_chunks=[SourceChunk(index=item.index, text=item.text, score=item.score) for item in results],
     )
-
 
 @app.get("/metrics", include_in_schema=False)
 def metrics() -> Response:

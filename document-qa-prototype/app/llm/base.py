@@ -8,3 +8,10 @@ class LLMClient(Protocol):
         context: list[str],
     ) -> str:
         ...
+
+    def generate_without_context(self, question: str) -> str:
+        ...
+
+
+class ContextFreeUnavailable(Exception):
+    """The selected provider cannot generate without document context."""

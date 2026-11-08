@@ -51,10 +51,7 @@ class OpenRouterLLM:
             for index, chunk in enumerate(context, start=1)
         )
 
-        payload = {
-            "model": self.model,
-            "temperature": 0,
-            "messages": [
+        messages = [
                 {
                     "role": "system",
                     "content": (
@@ -71,9 +68,18 @@ class OpenRouterLLM:
                         f"Question: {question}"
                     ),
                 },
-            ],
-        }
+            ]
+        return self._complete(messages)
 
+    @instrument_llm("openrouter", require_context=False)
+    def generate_without_context(self, question: str) -> str:
+        return self._complete([
+            {"role": "system", "content": "Answer the user's question accurately and concisely. If unsure, say so."},
+            {"role": "user", "content": question},
+        ])
+
+    def _complete(self, messages: list[dict[str, str]]) -> str:
+        payload = {"model": self.model, "temperature": 0, "messages": messages}
         try:
             response = self.client.post(
                 OPENROUTER_URL,

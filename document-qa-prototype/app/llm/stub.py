@@ -1,4 +1,4 @@
-from app.llm.base import LLMClient
+from app.llm.base import ContextFreeUnavailable, LLMClient
 from app.observability.llm import instrument_llm
 
 
@@ -13,6 +13,9 @@ class StubLLM:
             return "I don't know based on the provided document."
 
         return context[0]
+
+    def generate_without_context(self, question: str) -> str:
+        raise ContextFreeUnavailable()
 
 
 def get_stub_llm() -> LLMClient:

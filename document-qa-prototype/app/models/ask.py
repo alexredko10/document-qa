@@ -1,9 +1,16 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class AskRequest(BaseModel):
-    document_id: str
+    document_id: str | None = None
+    use_context: bool = True
     question: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_document_id(self):
+        if self.use_context and (self.document_id is None or not self.document_id.strip()):
+            raise ValueError("document_id is required when using document context")
+        return self
 
     @field_validator("question")
     @classmethod
@@ -34,3 +41,4 @@ class AskResponse(BaseModel):
     answer: str | None = None
     source_chunks: list[SourceChunk]
     llm: LLMMetadata | None = None
+    use_context: bool = True

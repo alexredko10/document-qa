@@ -23,11 +23,15 @@
         <div class="card-heading"><div><span class="step">02 / QUERY</span><h2 id="question-title">Ask a question</h2><p>Explore the context you just provided.</p></div><span class="heading-icon" aria-hidden="true">✳</span></div>
         <label for="question" class="field-label">YOUR QUESTION</label>
         <div class="question-row"><input id="question" type="text" placeholder="What would you like to know?"><button id="ask" class="button dark" type="button" disabled>Ask <span>↗</span></button></div>
+        <div class="mode-controls"><label><input id="use-context" type="checkbox" checked> Use document context (RAG)</label><button id="compare" class="button compare-button" type="button" disabled>Compare both ↗</button></div>
         <div id="ask-status" class="message" role="status">Upload a document to get started.</div>
+        <div id="single-result">
         <div class="answer-label"><span>ANSWER</span><span class="response-label">RESPONSE <span class="response-dot">●</span></span></div>
         <div class="answer" id="answer">Your answer will appear here.</div>
         <details id="sources" class="sources"><summary>Source chunks <span id="source-count">0</span></summary><div id="source-list"></div></details>
-        <div class="metadata"><div class="metadata-heading">LLM DETAILS <span>LAST RESPONSE</span></div><div class="metadata-grid"><div><span>Provider</span><strong id="provider">—</strong></div><div><span>Requested model</span><strong id="requested-model">—</strong></div><div><span>Actual model</span><strong id="actual-model">—</strong></div><div><span>Input / output tokens</span><strong id="tokens">—</strong></div><div><span>Provider latency</span><strong id="llm-duration">—</strong></div><div><span>Reported cost</span><strong id="cost">—</strong></div></div></div>
+        <div class="metadata"><div class="metadata-grid request-meta"><div><span>Context mode</span><strong id="single-mode">—</strong></div><div><span>Request ID</span><strong id="single-request-id">—</strong></div><div><span>HTTP duration</span><strong id="single-http-duration">—</strong></div></div><div class="metadata-heading">LLM DETAILS <span>LAST RESPONSE</span></div><div class="metadata-grid"><div><span>Provider</span><strong id="provider">—</strong></div><div><span>Requested model</span><strong id="requested-model">—</strong></div><div><span>Actual model</span><strong id="actual-model">—</strong></div><div><span>Input / output tokens</span><strong id="tokens">—</strong></div><div><span>Provider latency</span><strong id="llm-duration">—</strong></div><div><span>Reported cost</span><strong id="cost">—</strong></div></div></div>
+        </div>
+        <div id="comparison" class="comparison" hidden aria-live="polite"></div>
       </section>
     </div>
     <section class="activity" aria-labelledby="activity-title"><div class="activity-header"><div><div class="eyebrow"><span class="accent-line"></span> SESSION ACTIVITY</div><h2 id="activity-title">The request trail<span class="period">.</span></h2><p>Recent interactions in this browser tab. No document content is stored here.</p></div><div class="activity-badge">LAST 10 REQUESTS</div></div>
