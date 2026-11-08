@@ -3,3 +3,6 @@
 .mode-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:13px}.mode-controls label{display:flex;align-items:center;gap:8px;font-size:12px;color:#536a5b}.mode-controls input{accent-color:#4c8760}.compare-button{background:#eef5ed;color:#32583d;border:1px solid #dbe8da;padding:9px 12px}.comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.comparison[hidden]{display:none}.comparison-result{border:1px solid #e4e9e1;border-radius:5px;padding:14px;min-width:0}.comparison-result h3{font-size:13px;color:#365644;margin:0 0 8px}.comparison-result p{font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.comparison-result dl{font-size:11px;margin:0}.comparison-result dt{color:#8a9a8e;margin-top:8px}.comparison-result dd{margin:2px 0 0;color:#324b3b;overflow-wrap:anywhere}@media(max-width:520px){.comparison{grid-template-columns:1fr}.mode-controls{align-items:flex-start;flex-direction:column}}
 
 .request-meta{margin-bottom:16px}
+
+.comparison-result{background:#fff}
+.comparison-result p{max-height:360px;overflow-y:auto}
