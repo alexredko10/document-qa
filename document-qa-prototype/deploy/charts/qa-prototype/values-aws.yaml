@@ -14,6 +14,9 @@ embedding:
   provider: openrouter
   model: openai/text-embedding-3-small
 
+tracing:
+  endpoint: http://tempo.monitoring.svc.cluster.local:4318/v1/traces
+
 resources:
   requests:
     cpu: 125m

@@ -19,7 +19,9 @@ from app.rag.markdown_chunker import split_markdown
 from app.rag.retriever import search_vectors
 
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from opentelemetry.trace import Status, StatusCode
 
+from app.observability import tracing
 from app.observability.logging import log_event, request_id, request_id_context
 from app.observability.metrics import (
     HTTP_REQUESTS,
@@ -28,6 +30,7 @@ from app.observability.metrics import (
 )
 
 app = FastAPI(title="Document QA Prototype")
+tracing.configure_tracing()
 
 MAX_DOCUMENT_BYTES = 1024 * 1024
 MAX_SEMANTIC_CHUNKS = 256
@@ -52,32 +55,42 @@ async def collect_http_metrics(request: Request, call_next):
     failed = False
     if not scrape:
         HTTP_IN_FLIGHT.inc()
-    try:
+    with tracing.get_tracer().start_as_current_span(
+        "http.request",
+        attributes={"http.request.method": method},
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         try:
-            response = await call_next(request)
-            status_code = response.status_code
-        except Exception:
-            failed = True
-            response = PlainTextResponse("Internal Server Error", status_code=500)
-        response.headers["X-Request-ID"] = correlation_id
-        return response
-    finally:
-        elapsed = perf_counter() - start
-        route = request.scope.get("route")
-        route_name = getattr(route, "path", "unmatched")
-        try:
-            if not scrape:
-                HTTP_REQUESTS.labels(method=method, route=route_name, status=str(status_code)).inc()
-                HTTP_DURATION.labels(method=method, route=route_name).observe(elapsed)
-                HTTP_IN_FLIGHT.dec()
-            if failed:
-                log_event("http_request_failed", level=logging.ERROR, method=method,
-                          route=route_name, reason="unexpected_error")
-            if not quiet:
-                log_event("http_request_completed", method=method, route=route_name,
-                          status_code=status_code, duration_ms=round(elapsed * 1000, 3))
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+            except Exception:
+                failed = True
+                response = PlainTextResponse("Internal Server Error", status_code=500)
+            response.headers["X-Request-ID"] = correlation_id
+            return response
         finally:
-            request_id_context.reset(token)
+            elapsed = perf_counter() - start
+            route = request.scope.get("route")
+            route_name = getattr(route, "path", "unmatched")
+            span.set_attribute("http.route", route_name)
+            span.set_attribute("http.response.status_code", status_code)
+            if failed or status_code >= 500:
+                span.set_status(Status(StatusCode.ERROR))
+            try:
+                if not scrape:
+                    HTTP_REQUESTS.labels(method=method, route=route_name, status=str(status_code)).inc()
+                    HTTP_DURATION.labels(method=method, route=route_name).observe(elapsed)
+                    HTTP_IN_FLIGHT.dec()
+                if failed:
+                    log_event("http_request_failed", level=logging.ERROR, method=method,
+                              route=route_name, reason="unexpected_error")
+                if not quiet:
+                    log_event("http_request_completed", method=method, route=route_name,
+                              status_code=status_code, duration_ms=round(elapsed * 1000, 3))
+            finally:
+                request_id_context.reset(token)
 
 
 DEMO_DIR = Path(__file__).resolve().parent / "demo"
@@ -174,13 +187,20 @@ def ask(request: AskRequest,
                 raise EmbeddingError('incompatible_dimensions')
         except EmbeddingError as exc:
             raise HTTPException(status_code=503, detail="Embedding provider unavailable or incompatible; re-upload the document if configuration changed") from exc
-        results = search_vectors(
-            query_vector=query_vector,
-            chunks=document_chunks[request.document_id],
-            vectors=document_vectors[request.document_id],
-            top_k=3,
-            positive_only=stored_provider == 'hash',
-        )
+        with tracing.get_tracer().start_as_current_span(
+            "vector.retrieval", record_exception=False, set_status_on_exception=False
+        ) as span:
+            try:
+                results = search_vectors(
+                    query_vector=query_vector,
+                    chunks=document_chunks[request.document_id],
+                    vectors=document_vectors[request.document_id],
+                    top_k=3,
+                    positive_only=stored_provider == 'hash',
+                )
+            except Exception:
+                span.set_status(Status(StatusCode.ERROR))
+                raise
         retrieval = RetrievalMetadata(embedding_provider=stored_provider, embedding_model=stored_model,
                                       retrieval_duration_ms=round((perf_counter() - started) * 1000, 3))
         context = [item.text for item in results]

@@ -7,6 +7,7 @@ import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from uuid import uuid4
+from opentelemetry import trace
 
 request_id_context: ContextVar[str | None] = ContextVar("request_id", default=None)
 _REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z", re.ASCII)
@@ -26,6 +27,7 @@ def model_id(provider: str, instance: object) -> str:
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        span_context = trace.get_current_span().get_span_context()
         payload = {
             "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
@@ -33,6 +35,8 @@ class JsonFormatter(logging.Formatter):
             "request_id": record.correlation_id,
         }
         payload.update(record.fields)
+        payload["trace_id"] = f"{span_context.trace_id:032x}" if span_context.is_valid else None
+        payload["span_id"] = f"{span_context.span_id:016x}" if span_context.is_valid else None
         return json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
 
 

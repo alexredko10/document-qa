@@ -3,7 +3,9 @@ from functools import wraps
 from time import perf_counter
 
 from prometheus_client import Counter, Histogram
+from opentelemetry.trace import Status, StatusCode
 
+from app.observability import tracing
 from app.observability.logging import log_event, model_id
 from app.llm.metadata import update_metadata
 
@@ -33,6 +35,18 @@ def instrument_llm(provider, *, require_context=True):
                             requested_model=getattr(args[0], "model", None) if provider == "openrouter" else None,
                             actual_model="stub" if provider == "stub" else None)
             try:
+                if provider == "openrouter":
+                    with tracing.get_tracer().start_as_current_span(
+                        "llm.generation",
+                        attributes={"llm.provider": provider},
+                        record_exception=False,
+                        set_status_on_exception=False,
+                    ) as span:
+                        try:
+                            return func(*args, **kwargs)
+                        except Exception:
+                            span.set_status(Status(StatusCode.ERROR))
+                            raise
                 return func(*args, **kwargs)
             except Exception as exc:
                 raw_reason = getattr(exc, "reason", "")

@@ -173,6 +173,6 @@ def test_ask_mode_log_is_correlated_bounded_and_private():
     events = [json.loads(line) for line in stream.getvalue().splitlines()]
     mode_events = [e for e in events if e['event'] == 'ask_request_received']
     assert [(e['request_id'], e['context_mode']) for e in mode_events] == [('rag-id', 'rag'), ('plain-id', 'no_rag'), ('missing-id', 'rag')]
-    assert all(set(event) == {'timestamp', 'level', 'event', 'request_id', 'context_mode'} for event in mode_events)
+    assert all(set(event) == {'timestamp', 'level', 'event', 'request_id', 'context_mode', 'trace_id', 'span_id'} for event in mode_events)
     for secret in ('private-document', 'private-credential', 'private-question', 'missing-secret-document', doc_id):
         assert secret not in stream.getvalue()

@@ -49,6 +49,10 @@ spec:
               value: {{ .Values.embedding.provider | quote }}
             - name: OPENROUTER_EMBEDDING_MODEL
               value: {{ .Values.embedding.model | quote }}
+            {{- if .Values.tracing.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: {{ .Values.tracing.endpoint | quote }}
+            {{- end }}
             {{- if eq .Values.llm.provider "openrouter" }}
             - name: OPENROUTER_MODEL
               value: {{ .Values.llm.model | quote }}

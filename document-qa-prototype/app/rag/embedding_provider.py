@@ -5,8 +5,10 @@ from time import perf_counter
 from typing import Protocol
 
 import httpx
+from opentelemetry.trace import Status, StatusCode
 from prometheus_client import Counter, Histogram
 
+from app.observability import tracing
 from app.observability.logging import log_event, model_id
 from app.rag.embedder import embed_text
 
@@ -114,16 +116,35 @@ class OpenRouterEmbeddings:
     def _batch(self, texts, operation):
         if not self.api_key or not self.model:
             raise EmbeddingError('configuration_error')
-        try:
-            if self.client is not None:
-                response = self.client.post(URL, headers={'Authorization': f'Bearer {self.api_key}'}, json={'model': self.model, 'input': texts}, timeout=20.0)
-            else:
-                with httpx.Client(timeout=20.0) as client:
-                    response = client.post(URL, headers={'Authorization': f'Bearer {self.api_key}'}, json={'model': self.model, 'input': texts})
-        except httpx.TimeoutException as exc:
-            raise EmbeddingError('timeout') from exc
-        except httpx.RequestError as exc:
-            raise EmbeddingError('error') from exc
+        with tracing.get_tracer().start_as_current_span(
+            "embedding.request",
+            attributes={"embedding.provider": self.provider, "embedding.operation": operation},
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            try:
+                if self.client is not None:
+                    response = self.client.post(
+                        URL,
+                        headers={'Authorization': f'Bearer {self.api_key}'},
+                        json={'model': self.model, 'input': texts},
+                        timeout=20.0,
+                    )
+                else:
+                    with httpx.Client(timeout=20.0) as client:
+                        response = client.post(
+                            URL,
+                            headers={'Authorization': f'Bearer {self.api_key}'},
+                            json={'model': self.model, 'input': texts},
+                        )
+                if response.status_code >= 400:
+                    span.set_status(Status(StatusCode.ERROR))
+            except httpx.TimeoutException:
+                span.set_status(Status(StatusCode.ERROR))
+                raise EmbeddingError('timeout') from None
+            except httpx.RequestError:
+                span.set_status(Status(StatusCode.ERROR))
+                raise EmbeddingError('error') from None
         if response.status_code == 429:
             raise EmbeddingError('rate_limited')
         if response.status_code >= 400:
