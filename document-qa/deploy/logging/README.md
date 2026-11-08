@@ -6,7 +6,7 @@ Loki has authentication disabled and trusts every client that can reach its Clus
 
 ## Bootstrap after review
 
-These Applications are manually bootstrapped, not managed by an App-of-Apps. Commit and push the reviewed changes through your normal process, then using an authorized cluster session from that checked-out revision run:
+These Applications are manually bootstrapped because there is no App-of-Apps. Relative-path commands require both a checked-out copy of this repository and an authorized `kubectl` context on the same machine. Commit and push the reviewed changes through your normal process, then, from that checkout, run:
 
 ```sh
 kubectl apply -f document-qa/deploy/argocd/loki.yaml
@@ -45,3 +45,32 @@ For the final filter, the parentheses group the parsed field comparisons; `http_
 Check Argo CD sync/health and events first. For discovery, inspect Alloy logs and `kubectl -n qa get pods -l 'app.kubernetes.io/name=qa-prototype,app.kubernetes.io/instance=qa-prototype'`; verify container `api` and permissions with `kubectl auth can-i --as=system:serviceaccount:monitoring:alloy list pods -n qa` and `kubectl auth can-i --as=system:serviceaccount:monitoring:alloy get pods --subresource=log -n qa` (impersonation itself requires authorization). Check the Alloy ServiceAccount, `qa` Role and RoleBinding if denied. Check Loki readiness, disk usage, logs, and Alloy write/retry errors if ingestion fails. If Grafana cannot query Loki, inspect its provisioned datasource URL, Service endpoints and Loki readiness, and confirm the existing Prometheus datasource and dashboard still work. Generated chart configuration can be inspected with `kubectl -n monitoring get configmap alloy loki -o yaml`.
 
 For rollback, first restore and reapply the prior Grafana Application manifest and verify the Prometheus datasource/dashboard. Remove the Alloy and Loki Applications using the organization's Argo CD removal procedure; choose cascading deletion only if deletion of their managed resources and ephemeral logs is intended. With non-cascading removal or prune disabled, managed resources, including the `qa` Role/RoleBinding, may remain and need explicit operator cleanup. Stop Alloy before deleting Loki to avoid retries. Loki data is disposable and rollback is irreversible for logs stored only in its Pod. Do not delete `grafana-admin`, Grafana, or Prometheus resources.
+
+## Tempo trace backend (Phase 1)
+
+The `tempo` Argo CD Application uses Grafana Community single-binary chart **3.2.1** (Tempo 3.1.1). Tempo stores traces received over OTLP/HTTP at `http://tempo.monitoring.svc.cluster.local:4318/v1/traces`; Grafana's provisioned Tempo datasource queries `http://tempo.monitoring.svc.cluster.local:3200`. This phase supplies the backend only: the application and Alloy do not yet send traces.
+
+Tempo has one replica, a local 2 GiB `emptyDir`, and a 24-hour block-retention target. Retention runs asynchronously and Pod recreation or node loss can erase traces sooner; a full volume can interrupt ingestion. It requests 100m CPU/256 MiB and has limits of 500m/768 MiB; these are configuration bounds, not measured usage. Tempo does not provide authentication here, and ClusterIP does not encrypt traffic or isolate tenants. Limit access through the existing private cluster controls. The chart also enables private Jaeger and OTLP/gRPC receivers and publishes legacy Service ports by default; its Service templates fail when the Jaeger receiver is removed. No separate collector is installed.
+
+After reviewing and making the manifests available from Git, an operator must bootstrap the new Application and reapply Grafana's Application once: the Tempo Application is not managed by an App-of-Apps, and the existing Grafana Application spec must be updated once to add its datasource. If the authorized cluster session is the existing EC2 AWS SSM workflow, the checkout may remain on the developer's Mac; after committing and pushing, apply the exact reviewed public GitHub manifests pinned to the full commit SHA (replace the placeholder, never use a branch name):
+
+```sh
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/alexredko10/document-qa/<REVIEWED_COMMIT_SHA>/document-qa/deploy/argocd/tempo.yaml
+sudo k3s kubectl apply -f https://raw.githubusercontent.com/alexredko10/document-qa/<REVIEWED_COMMIT_SHA>/document-qa/deploy/argocd/grafana.yaml
+```
+
+From a machine that has both the checkout and an authorized context, the equivalent relative-path commands are:
+
+```sh
+kubectl apply -f document-qa/deploy/argocd/tempo.yaml
+kubectl apply -f document-qa/deploy/argocd/grafana.yaml
+kubectl -n argocd get applications tempo grafana
+kubectl -n argocd describe application tempo
+kubectl -n monitoring get pods,svc
+kubectl -n monitoring logs statefulset/tempo --tail=100
+kubectl -n monitoring port-forward svc/tempo 3200:3200
+# In another terminal, while port-forward is running:
+curl -fsS http://127.0.0.1:3200/ready
+```
+
+Check Argo CD sync and health, the Tempo Pod readiness and Grafana's Tempo datasource through existing private access. An empty trace list is expected until a later instrumentation phase. A Git push alone does not update the manually bootstrapped Grafana Application.

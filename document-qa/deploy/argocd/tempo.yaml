@@ -1,0 +1,72 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/grafana-community/helm-charts
+    chart: tempo
+    targetRevision: "3.2.1"
+    helm:
+      releaseName: tempo
+      valuesObject:
+        replicas: 1
+        service:
+          type: ClusterIP
+        serviceAccount:
+          automountServiceAccountToken: false
+        persistence:
+          enabled: false
+        # The chart does not mount /var/tempo when persistence is disabled.
+        extraVolumes:
+          - name: trace-data
+            emptyDir:
+              sizeLimit: 2Gi
+        tempo:
+          reportingEnabled: false
+          retention: 24h
+          storage:
+            trace:
+              backend: local
+              local:
+                path: /var/tempo/traces
+              wal:
+                path: /var/tempo/wal
+          extraVolumeMounts:
+            - name: trace-data
+              mountPath: /var/tempo
+          receivers:
+            otlp:
+              protocols:
+                http:
+                  endpoint: 0.0.0.0:4318
+          metricsGenerator:
+            enabled: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        tempoQuery:
+          enabled: false
+          ingress:
+            enabled: false
+        serviceMonitor:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: false
+      selfHeal: true
