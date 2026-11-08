@@ -3,24 +3,12 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Depends, Request, Response
-from fastapi.responses import FileResponse, PlainTextResponse
+from app.llm.metadata import metadata_context
 from app.llm.openrouter import LLMProviderError
 from app.llm.provider import get_llm
-from app.llm.base import ContextFreeUnavailable, LLMClient
-from app.llm.metadata import metadata_context
 from app.llm.relevance import has_relevant_context
 from app.models.ask import AskRequest, AskResponse, SourceChunk, LLMMetadata, RetrievalMetadata
 from app.models.document import DocumentRequest, DocumentResponse
-from app.rag.cleaner import clean_text
-from app.rag.embedder import embed_text
-from app.rag.embedding_provider import EmbeddingError, get_embedding_provider, validate_vectors
-from app.rag.markdown_chunker import split_markdown
-from app.rag.retriever import search_vectors
-
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from opentelemetry.trace import Status, StatusCode
-
 from app.observability import tracing
 from app.observability.logging import log_event, request_id, request_id_context
 from app.observability.metrics import (
@@ -28,6 +16,17 @@ from app.observability.metrics import (
     HTTP_DURATION,
     HTTP_IN_FLIGHT,
 )
+from app.rag.cleaner import clean_text
+from app.rag.embedding_provider import EmbeddingError, get_embedding_provider, validate_vectors
+from app.rag.markdown_chunker import split_markdown
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
+from fastapi.responses import FileResponse, PlainTextResponse
+from opentelemetry.trace import Status, StatusCode
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+from app.llm.base import ContextFreeUnavailable, LLMClient
+from app.rag.embedder import embed_text
+from app.rag.retriever import search_vectors
 
 app = FastAPI(title="Document QA Prototype")
 tracing.configure_tracing()

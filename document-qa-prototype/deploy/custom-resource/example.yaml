@@ -1,0 +1,7 @@
+apiVersion: platform.example.com/v1alpha1
+kind: DocumentQAService
+metadata:
+  name: document-qa
+spec:
+  llmProvider: stub
+  embeddingProvider: hash
