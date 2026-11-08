@@ -6,6 +6,10 @@ image:
 llm:
   provider: stub
 
+embedding:
+  provider: openrouter
+  model: openai/text-embedding-3-small
+
 resources:
   requests:
     cpu: 125m
