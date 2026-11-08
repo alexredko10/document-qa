@@ -1,6 +1,0 @@
-apiVersion: v2
-name: qa-service
-description: Document Q&A service (API + Postgres)
-type: application
-version: 0.1.0
-appVersion: "0.1.0"

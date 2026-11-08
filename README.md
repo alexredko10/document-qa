@@ -11,7 +11,7 @@ The working prototype uploads text documents into memory and answers questions u
 - [Local k6 benchmark](document-qa-prototype/README.md#local-k6-benchmark--8-november-2026)
 - [Custom Resource API and reconciliation design](document-qa-prototype/deploy/custom-resource/RECONCILIATION.md)
 
-`document-qa-prototype/` contains the working application and chart. `document-qa/deploy/argocd/`, `document-qa/deploy/grafana/`, `document-qa/deploy/logging/`, and `document-qa/infra/terraform/` contain the working platform infrastructure. `document-qa/app/`, `document-qa/operator/`, and the placeholder `qa-operator` and `qa-service` charts are unfinished experimental scaffolding and are not part of the delivered runtime.
+`document-qa-prototype/` contains the application, tests, Helm chart, Custom Resource design, and load test. `document-qa/deploy/argocd/`, `document-qa/deploy/grafana/`, `document-qa/deploy/logging/`, and `document-qa/infra/terraform/` contain the platform infrastructure. `.github/workflows/` contains CI.
 
 Implemented features include document ingestion and retrieval, a demo console, Helm and Argo CD configuration, Prometheus metrics and alerts, structured logs, and tracing with Tempo.
 

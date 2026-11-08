@@ -46,9 +46,9 @@ Check Argo CD sync/health and events first. For discovery, inspect Alloy logs an
 
 For rollback, first restore and reapply the prior Grafana Application manifest and verify the Prometheus datasource/dashboard. Remove the Alloy and Loki Applications using the organization's Argo CD removal procedure; choose cascading deletion only if deletion of their managed resources and ephemeral logs is intended. With non-cascading removal or prune disabled, managed resources, including the `qa` Role/RoleBinding, may remain and need explicit operator cleanup. Stop Alloy before deleting Loki to avoid retries. Loki data is disposable and rollback is irreversible for logs stored only in its Pod. Do not delete `grafana-admin`, Grafana, or Prometheus resources.
 
-## Tempo trace backend (Phase 1)
+## Application tracing with Tempo
 
-The `tempo` Argo CD Application uses Grafana Community single-binary chart **3.2.1** (Tempo 3.1.1). Tempo stores traces received over OTLP/HTTP at `http://tempo.monitoring.svc.cluster.local:4318/v1/traces`; Grafana's provisioned Tempo datasource queries `http://tempo.monitoring.svc.cluster.local:3200`. This phase supplies the backend only: the application and Alloy do not yet send traces.
+The `tempo` Argo CD Application uses Grafana Community single-binary chart **3.2.1** (Tempo 3.1.1). Tempo stores traces received over OTLP/HTTP at `http://tempo.monitoring.svc.cluster.local:4318/v1/traces`; Grafana's provisioned Tempo datasource queries `http://tempo.monitoring.svc.cluster.local:3200`. FastAPI exports OpenTelemetry spans directly to Tempo for HTTP requests, embedding requests, vector retrieval and LLM generation. JSON logs include `trace_id` and `span_id`. Grafana's Loki derived fields provide **View Trace**, and Tempo's `tracesToLogsV2` links back to Loki logs. This navigation has been manually tested on the private AWS K3s lab.
 
 Tempo has one replica, a local 2 GiB `emptyDir`, and a 24-hour block-retention target. Retention runs asynchronously and Pod recreation or node loss can erase traces sooner; a full volume can interrupt ingestion. It requests 100m CPU/256 MiB and has limits of 500m/768 MiB; these are configuration bounds, not measured usage. Tempo does not provide authentication here, and ClusterIP does not encrypt traffic or isolate tenants. Limit access through the existing private cluster controls. The chart also enables private Jaeger and OTLP/gRPC receivers and publishes legacy Service ports by default; its Service templates fail when the Jaeger receiver is removed. No separate collector is installed.
 
@@ -73,4 +73,4 @@ kubectl -n monitoring port-forward svc/tempo 3200:3200
 curl -fsS http://127.0.0.1:3200/ready
 ```
 
-Check Argo CD sync and health, the Tempo Pod readiness and Grafana's Tempo datasource through existing private access. An empty trace list is expected until a later instrumentation phase. A Git push alone does not update the manually bootstrapped Grafana Application.
+Check Argo CD sync and health, the Tempo Pod readiness and Grafana's Tempo datasource through existing private access. Generate an application request and check its trace in Grafana; use **View Trace** in a Loki log and **Logs for this span** in Tempo to navigate between them. A Git push alone does not update the manually bootstrapped Grafana Application.

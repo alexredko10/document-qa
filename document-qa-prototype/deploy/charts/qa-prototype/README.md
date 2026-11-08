@@ -1,14 +1,14 @@
 # QA prototype Helm chart
 
-This chart deploys the **already tested `document-qa-prototype`** image, not the unimplemented main `document-qa` scaffold.
+This chart deploys the `document-qa-prototype` image.
 
 - One replica only: documents/vectors are kept in process memory. Every Pod restart loses uploaded documents. It is NOT a durable or highly available application.
-- Image is pinned by GHCR digest, not `latest`. Set `image.digest` for each deployment, or (later) commit it to a GitOps values file.
+- Image is pinned by GHCR digest, not `latest`. The AWS values contain the GitOps digest; other values must set `image.digest`.
 - `values-dev.yaml`: `stub`, works without credentials.
 - `values-prod.yaml`: `openrouter`, references Kubernetes Secret `qa-openrouter` (`OPENROUTER_API_KEY` key). The Secret must be created out-of-band; do not commit secrets.
-- No public ingress is created. `kubectl port-forward` is used for the local smoke test. Cloudflare Access/Tunnel is a later step.
+- No public ingress is created by this chart. Use authorized private access or `kubectl port-forward` for a smoke test.
 - `Recreate` strategy avoids overlapping copies of the in-memory service during upgrades but creates downtime and loses all document data.
-- Readiness/liveness check only `/healthz`, not upstream LLM health. Monitoring and provider observability are future tasks.
+- Readiness/liveness check only `/healthz`, not upstream LLM health. Prometheus metrics, structured logs and optional Tempo tracing provide application observability.
 
 Local chart lint, with the actual GHCR image digest:
 

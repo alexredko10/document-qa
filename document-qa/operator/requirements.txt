@@ -1,2 +1,0 @@
-kopf>=1.37
-kubernetes>=31.0

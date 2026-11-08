@@ -1,3 +1,19 @@
+# Document QA Prototype
+
+Upload a text document and ask questions using retrieved context. The local defaults use a stub LLM and hash embeddings; the private AWS deployment is configured for OpenRouter.
+
+## Quickstart
+
+From the repository root, using Python 3.12:
+
+```sh
+cd document-qa-prototype
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+LLM_PROVIDER=stub EMBEDDING_PROVIDER=hash OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="" .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+Open [http://127.0.0.1:8000/demo](http://127.0.0.1:8000/demo). Run the tests with `.venv/bin/python -m pytest -q` from the prototype directory.
 
 ## Observability
 
@@ -18,7 +34,7 @@ kubectl logs -n qa deployment/qa-prototype --since=15m | jq -R 'fromjson? | sele
 kubectl logs -n qa deployment/qa-prototype --since=15m | jq -R 'fromjson? | select(.event == "http_request_failed" or (.event == "llm_call_completed" and .outcome != "success"))'
 ```
 
-A future Loki pipeline can ingest these JSON fields and use the request ID for correlation; future OpenTelemetry instrumentation can add real trace context. Neither is installed or simulated here.
+In the AWS deployment, Alloy forwards application logs to Loki for Grafana queries. OpenTelemetry tracing can export spans directly to Tempo; it is disabled locally when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is empty. See the [logging and tracing guide](../document-qa/deploy/logging/README.md) for endpoints and operational details.
 
 ## Demo console
 
