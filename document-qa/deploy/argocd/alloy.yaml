@@ -1,0 +1,112 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: 1.15.0
+    helm:
+      releaseName: alloy
+      valuesObject:
+        crds:
+          create: false
+        controller:
+          type: deployment
+          replicas: 1
+          hostNetwork: false
+          volumes:
+            extra:
+              - name: alloy-data
+                emptyDir:
+                  sizeLimit: 128Mi
+        configReloader:
+          enabled: false
+        global:
+          podSecurityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+        rbac:
+          create: true
+          namespaces: [qa]
+          rules:
+            - apiGroups: [""]
+              resources: [pods]
+              verbs: [get, list, watch]
+            - apiGroups: [""]
+              resources: [pods/log]
+              verbs: [get]
+          clusterRules: []
+        alloy:
+          enableReporting: false
+          mounts:
+            extra:
+              - name: alloy-data
+                mountPath: /tmp/alloy
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          configMap:
+            content: |-
+              discovery.kubernetes "qa_pods" {
+                role = "pod"
+                namespaces { names = ["qa"] }
+                selectors {
+                  role = "pod"
+                  label = "app.kubernetes.io/instance=qa-prototype,app.kubernetes.io/name=qa-prototype"
+                }
+              }
+
+              discovery.relabel "qa_api" {
+                targets = discovery.kubernetes.qa_pods.targets
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  regex = "api"
+                  action = "keep"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label = "namespace"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
+                  target_label = "app"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label = "container"
+                }
+              }
+
+              loki.source.kubernetes "qa_api" {
+                targets = discovery.relabel.qa_api.output
+                forward_to = [loki.write.local.receiver]
+              }
+
+              loki.write "local" {
+                endpoint { url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push" }
+              }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: false
+      selfHeal: true
