@@ -41,6 +41,21 @@ def test_batch_and_indices():
     assert all(p['model'] == MODEL for p in payloads)
 
 
+def test_default_client_uses_timeout_and_closes(monkeypatch):
+    requests = []
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json=response([[1., 0.]]))
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    def make_client(**kwargs):
+        assert kwargs == {'timeout': 20.0}
+        return client
+    monkeypatch.setattr('app.rag.embedding_provider.httpx.Client', make_client)
+    assert OpenRouterEmbeddings('test-key').embed(['synthetic'], 'query') == [[1., 0.]]
+    assert client.is_closed
+    assert requests[0].extensions['timeout'] == dict.fromkeys(('connect', 'read', 'write', 'pool'), 20.0)
+
+
 @pytest.mark.parametrize('body', [
     {}, {'model': MODEL, 'data': []}, {'model': 'other', 'data': [{'index': 0, 'embedding': [1]}]},
     {'model': MODEL, 'data': [{'index': 1, 'embedding': [1]}]},

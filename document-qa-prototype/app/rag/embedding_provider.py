@@ -1,4 +1,3 @@
-"""Embedding providers and bounded request observability."""
 import math
 import os
 from time import perf_counter
@@ -124,20 +123,16 @@ class OpenRouterEmbeddings:
             set_status_on_exception=False,
         ) as span:
             try:
+                request = {
+                    'headers': {'Authorization': f'Bearer {self.api_key}'},
+                    'json': {'model': self.model, 'input': texts},
+                    'timeout': 20.0,
+                }
                 if self.client is not None:
-                    response = self.client.post(
-                        URL,
-                        headers={'Authorization': f'Bearer {self.api_key}'},
-                        json={'model': self.model, 'input': texts},
-                        timeout=20.0,
-                    )
+                    response = self.client.post(URL, **request)
                 else:
                     with httpx.Client(timeout=20.0) as client:
-                        response = client.post(
-                            URL,
-                            headers={'Authorization': f'Bearer {self.api_key}'},
-                            json={'model': self.model, 'input': texts},
-                        )
+                        response = client.post(URL, **request)
                 if response.status_code >= 400:
                     span.set_status(Status(StatusCode.ERROR))
             except httpx.TimeoutException:
@@ -150,6 +145,9 @@ class OpenRouterEmbeddings:
             raise EmbeddingError('rate_limited')
         if response.status_code >= 400:
             raise EmbeddingError('error')
+        return self._parse_response(response, texts, operation)
+
+    def _parse_response(self, response, texts, operation):
         try:
             data = response.json()
         except ValueError as exc:

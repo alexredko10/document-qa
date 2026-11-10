@@ -1,4 +1,3 @@
-"""Application-only structured logging and request correlation."""
 import json
 import logging
 import os
