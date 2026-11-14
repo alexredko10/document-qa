@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^(?:\.pre-commit-config\.yaml|\.github/workflows/ci\.yaml|xrd-platform/(?!\.project_memory/).*)$
+      - id: end-of-file-fixer
+        files: ^(?:\.pre-commit-config\.yaml|\.github/workflows/ci\.yaml|xrd-platform/(?!\.project_memory/).*)$
+      - id: check-yaml
+        files: ^(?:\.pre-commit-config\.yaml|\.github/workflows/ci\.yaml|xrd-platform/(?!\.project_memory/).*\.(?:yaml|yml))$
+      - id: check-toml
+        files: ^xrd-platform/(?!\.project_memory/).*\.toml$
+      - id: check-ast
+        files: ^xrd-platform/(?!\.project_memory/).*\.py$
+
+  - repo: local
+    hooks:
+      - id: xrd-tests
+        name: XRD pytest
+        entry: bash xrd-platform/scripts/run-tests.sh
+        language: system
+        files: ^xrd-platform/(?!\.project_memory/)
+        pass_filenames: false
