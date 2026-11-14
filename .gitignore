@@ -11,3 +11,6 @@ dist/
 *.tfstate*
 .DS_Store
 .idea/
+
+# Local Claude agent state
+.claude/

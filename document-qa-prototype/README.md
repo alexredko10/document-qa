@@ -1,6 +1,6 @@
 # Document QA Prototype
 
-Upload a text document and ask questions using retrieved context. The local defaults use a stub LLM and hash embeddings; the private AWS deployment is configured for OpenRouter.
+This application is part of a pet project exploring document question answering with retrieval-augmented generation. Upload a text document and ask questions using retrieved context. The local defaults use a stub LLM and hash embeddings; the private AWS deployment is configured for OpenRouter.
 
 ## Quickstart
 

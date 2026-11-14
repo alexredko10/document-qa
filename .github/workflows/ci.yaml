@@ -33,6 +33,25 @@ jobs:
           LLM_PROVIDER: stub
         run: python -m pytest -q
 
+  xrd-test:
+    name: XRD tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install XRD dependencies
+        working-directory: xrd-platform
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run XRD tests
+        working-directory: xrd-platform
+        run: python -m pytest -q
+
   container:
     name: Build, scan and publish ARM64
     needs: test

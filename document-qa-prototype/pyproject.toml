@@ -1,6 +1,7 @@
 [project]
 name = "document-qa-prototype"
 version = "0.1.0"
+description = "Pet project for document question answering with retrieval and optional language-model providers."
 requires-python = ">=3.12"
 
 dependencies = [

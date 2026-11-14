@@ -1,6 +1,6 @@
-# Document QA — Platform Engineering Take-Home
+# Document QA and XRD Platform — Pet Project
 
-The working prototype uploads text documents into memory and answers questions using retrieved chunks. It supports a deterministic stub and hash embedding baseline, plus optional OpenRouter generation and embeddings. A demo console provides RAG comparison and request metadata.
+This is a pet project exploring document question answering and scientific X-ray diffraction retrieval, with supporting deployment and observability infrastructure. The Document QA prototype uploads text documents into memory and answers questions using retrieved chunks. It supports a deterministic stub and hash embedding baseline, plus optional OpenRouter generation and embeddings. A demo console provides RAG comparison and request metadata.
 
 ## Navigate the repository
 

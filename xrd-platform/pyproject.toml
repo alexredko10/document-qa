@@ -1,0 +1,27 @@
+[project]
+name = "xrd-platform"
+version = "0.1.0"
+description = "Research-oriented pet project for scientific X-ray diffraction encoding and retrieval."
+requires-python = ">=3.12"
+
+dependencies = [
+    "numpy>=2.0",
+    "pyFAI>=2024.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.0",
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
