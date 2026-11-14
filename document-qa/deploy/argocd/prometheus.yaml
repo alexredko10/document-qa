@@ -47,7 +47,7 @@ spec:
             enabled: false
           prometheus-pushgateway:
             enabled: false
-            
+
         extraScrapeConfigs: |
           - job_name: document-qa
             scrape_interval: 15s

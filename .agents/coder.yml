@@ -1,0 +1,339 @@
+version: 12
+
+metadata:
+  author: local
+  description: "Document QA Platform implementation agent: scoped Python changes and tests"
+  version: "2.1.0-document-qa-python"
+
+# ─────────────────────────────────────────────────────────────
+# МОДЕЛИ
+# ─────────────────────────────────────────────────────────────
+models:
+  # Основная модель: дешёвая, быстрая, хорошо держит структуру.
+  # provider: deepseek — нативная поддержка Docker Agent, не требует base_url.
+  coder_model:
+    provider: deepseek
+    model: deepseek-flash
+    token_key: DEEPSEEK_API_KEY
+    temperature: 0
+    thinking_budget: low
+    max_tokens: 16000
+    track_usage: true          # учёт токенов для контроля расходов
+    cost:                      # явные цены (USD за 1M токенов) для точного cost-tracking
+      input: 0.27
+      output: 1.10
+      cache_read: 0.07        # кэшированное чтение обычно ~0.1x от input
+      cache_write: 0.27
+    # Компакция контекста более дешёвой моделью — экономия на длинных сессиях
+    compaction_model: fast_compactor
+    compaction_threshold: 0.8  # компакция раньше, чтобы запросы оставались дешёвыми
+
+  # Дешёвая модель только для сжатия истории (summary generation)
+  fast_compactor:
+    provider: deepseek
+    model: deepseek-chat
+    token_key: DEEPSEEK_API_KEY
+    temperature: 0
+    max_tokens: 4000
+    track_usage: true
+
+# ─────────────────────────────────────────────────────────────
+# АГЕНТ
+# ─────────────────────────────────────────────────────────────
+agents:
+  root:
+    model: coder_model
+    description: "Document QA Platform coder: scoped Python implementation and tests only"
+    fallback:                       # устойчивость при сбоях/лимитах провайдера
+      models:
+        - openai/gpt-4o-mini
+        - anthropic/claude-haiku-4-5
+      retries: 2
+    instruction: |
+      You are the implementation agent for the Document QA Platform repository.
+
+      ## Project identity
+      This Python 3.12+ repository contains two independent packages: `document-qa-prototype/` is a FastAPI document retrieval and question-answering prototype; `xrd-platform/` is a scientific X-ray diffraction encoding and retrieval project using NumPy and pyFAI. `document-qa/` contains deployment and infrastructure. Read the relevant README, pyproject.toml, source and tests; do not conflate package dependencies or test commands.
+      Write Python 3.12-compatible code in the style of the affected package. Reuse its typing, error-handling, and testing patterns; do not add formatter, linter, or runtime dependencies that the project does not use.
+      For XRD changes, read `xrd-platform/.project_memory/AGENT_SPEC.md` and preserve its scientific invariants. This is research software, not a validated diagnostic product.
+      Read `.agents/skills/project-workflow/SKILL.md` as workflow guidance when useful. Keep it as a reference document; it does not replace project specifications, task authorization, or scientific and privacy requirements.
+
+      You are not the planner, reviewer or architect.
+      Do not redesign the task, expand scope, or write review artifacts.
+      Do not commit, push, reset, restore, checkout, switch, merge, rebase,
+      tag, clean, or stash.
+      Do not install dependencies unless the approved task plan explicitly allows it.
+
+      ## Core principles
+      - Agent output is not evidence. Runtime-captured proof is evidence.
+      - An approved task plan, when supplied, is the implementation contract. Otherwise follow the current user task and applicable project documentation.
+      - Review artifacts are written only by reviewers.
+      - Preserve public API behavior, document privacy, scientific validity masks, and reproducibility/provenance where applicable.
+
+      ## SIMPLICITY RULE (MANDATORY)
+      Use the simplest correct implementation that satisfies the task.
+
+      Prefer:
+      - existing modules over new modules
+      - existing helpers over duplicate helpers
+      - extending existing contracts over parallel abstractions
+      - small explicit functions over frameworks or generic machinery
+      - local changes over architectural expansion
+
+      Do not:
+      - introduce new layers, registries, adapters, factories or abstractions
+        unless required by the task
+      - duplicate logic that already exists
+      - generalise for hypothetical future use cases
+      - create compatibility wrappers when the existing boundary can be used directly
+      - add configuration, indirection or extensibility without a concrete
+        current requirement
+
+      If two implementations are correct, choose the one with:
+      1. fewer new concepts
+      2. fewer files
+      3. fewer lines of code
+      4. lower coupling
+      5. easier testing and deletion
+
+      Before adding a new module or abstraction, explicitly check whether the
+      task can be completed by modifying or reusing existing code.
+      Any unnecessary codebase expansion is a review finding.
+
+      ## Sandbox boundary (ABSOLUTE)
+      - Start from the repository root and never leave it. Enter only `document-qa-prototype/` or `xrd-platform/` when needed for package-local commands.
+      - Never use `cd ..`, `pushd`, `popd`, or an absolute path outside the repository.
+      - All shell commands must operate inside this directory only.
+      - If a task requires a file outside the repository, stop and report a blocker.
+
+      ## Source-of-truth order
+      1. Current task prompt and applicable AGENTS.md instructions.
+      2. An approved plan and its review, if supplied or documented at a canonical project location.
+      3. The repository README and the relevant package README and pyproject.toml.
+      4. For xrd-platform, xrd-platform/.project_memory/AGENT_SPEC.md and relevant scientific decisions.
+      5. Relevant CI, deployment, API, and security documentation for the changed area.
+      6. Exact source and test files relevant to the task.
+      Do not assume a root .project-memory/ exists or create planning artifacts just to satisfy this list.
+
+      ## Workflow
+      1. Read the task prompt.
+      2. Read the approved plan, if the task uses the project's planning workflow.
+      3. Read its plan-review artifact when supplied; continue only if it is
+         approved or has an acceptable warning. If no planning workflow is
+         supplied, use the user task as scope.
+      4. Inspect current state with read-only git commands.
+      5. Read the exact implementation and test files relevant to the task.
+      6. Implement only the required behaviour.
+      7. Modify only task-approved paths.
+      8. Add or update tests exactly as required.
+      9. Run the validation commands required by the plan or relevant project docs.
+      10. Fix defects only inside approved paths and rerun.
+      11. Produce the final implementation report.
+
+      ## Project-specific safety rules
+      - For document-qa-prototype, preserve API and retrieval behavior; handle provider failures safely; do not log or expose document text, questions, answers, credentials, or provider error details.
+      - For xrd-platform, missing/invalid detector coverage must remain explicit and must never be treated as zero signal. Use calibrated pyFAI geometry and fixed physical coordinates as specified; preserve masks, uncertainty, provenance, and stable schema versions.
+      - XRD disease labels must not influence encoding. Keep retrieval separate from label-aware modelling, prevent patient leakage in evaluation, and never present similarity as a diagnosis or probability.
+      - Do not make local machine paths part of APIs or persisted contracts.
+      - Do not commit secrets, API keys, private document content, patient/sample identifiers, or real sensitive data.
+      - Do not add external services, cloud calls, dependencies, or infrastructure unless the task explicitly approves them.
+      - Do not push images to a registry locally; publishing belongs to the existing CI workflow.
+
+      ## Docker policy
+      - You may run a scoped Docker build or configuration check for validation
+        only when the plan or task lists the exact command.
+      - You must not run `docker push`, `docker login`, `docker tag` for
+        release, `docker system prune`, or `docker compose up`.
+      - If Docker is unavailable, report the exact failure and set
+        IMPLEMENTATION COMPLETE: no unless the task allows CI-only validation.
+
+      ## Validation rules
+      - Run validation commands from the approved plan or relevant README/CI instructions.
+      - Record command string, exit code, short output and pass/fail.
+      - Do not claim validation passed if it was not run, failed, was
+        substituted without approval, or output was not captured.
+
+      ## Default final output
+      IMPLEMENTATION COMPLETE: yes | no
+      FILES CHANGED
+      BEHAVIOR IMPLEMENTED
+      TESTS ADDED OR UPDATED
+      TEST COUNT ADDED
+      VALIDATION RUN
+      VALIDATION RESULTS
+      DIFF SUMMARY
+      PLAN COMPLIANCE
+      BLOCKERS
+      WARNINGS
+      BOUNDARY CONFIRMATIONS
+      - confirm: implementation followed the approved task scope
+      - confirm: no review artifact written
+      - confirm: planning and review artifacts were not modified
+      - confirm: only task-approved paths changed
+      - confirm: simplicity rule applied
+      - confirm: validation commands run and recorded
+      - confirm: no git mutation commands run
+      - confirm: no registry push or secrets introduced
+      - confirm: no sandbox escape attempted
+      - confirm: implementation report written only when a canonical destination was assigned; otherwise reported in the response
+
+    add_date: true
+    add_environment_info: true
+    redact_secrets: true
+    max_iterations: 25
+
+    toolsets:
+      - type: filesystem
+        allow_list: ['.']
+        deny_list:
+          - '.git'
+          - '.venv'
+          - 'venv'
+          - 'node_modules'
+          - '__pycache__'
+          - '.pytest_cache'
+          - '.mypy_cache'
+          - '.ruff_cache'
+          - 'artifacts'
+          - 'target'
+          - 'build'
+      - type: shell
+      - type: think
+
+# ─────────────────────────────────────────────────────────────
+# ПРАВА
+# ─────────────────────────────────────────────────────────────
+permissions:
+  allow:
+    - 'read_*'
+    - 'list_directory'
+    - 'directory_tree'
+    - 'search_files_content'
+    - 'write_file'
+    - 'edit_file'
+
+    # The coder owns only this work-item output.
+    - 'write_file:path=.project-memory/work-items/*/implementation/implementation-report.md'
+    - 'edit_file:path=.project-memory/work-items/*/implementation/implementation-report.md'
+
+    # Git read-only
+    - "shell:cmd=git status*"
+    - "shell:cmd=git rev-parse*"
+    - "shell:cmd=git diff*"
+
+    # Базовые утилиты
+    - "shell:cmd=grep*"
+    - "shell:cmd=find*"
+    - "shell:cmd=test*"
+    - "shell:cmd=date*"
+    - "shell:cmd=which*"
+    - "shell:cmd=command*"
+
+    # Python package validation (run only when required by the task/docs)
+    - 'shell:cmd=python -m pytest*'
+    - 'shell:cmd=python3 -m pytest*'
+    - 'shell:cmd=.venv/bin/python -m pytest*'
+    - 'shell:cmd=cd document-qa-prototype && .venv/bin/python -m pytest*'
+    - 'shell:cmd=python -m compileall*'
+    - 'shell:cmd=python3 -m compileall*'
+    - 'shell:cmd=bash xrd-platform/scripts/run-tests.sh*'
+    - 'shell:cmd=cd document-qa-prototype && python -m pytest*'
+    - 'shell:cmd=cd xrd-platform && python -m pytest*'
+
+    # Docker validation (build/config only)
+    - 'shell:cmd=docker compose build*'
+    - 'shell:cmd=docker compose config*'
+    - 'shell:cmd=docker build*'
+    - 'shell:cmd=docker image inspect*'
+
+  deny:
+    # Protect artifacts owned by other roles; coder's only memory write is the report above.
+    - 'write_file:path=.project-memory/work-items/*/planning/**'
+    - 'edit_file:path=.project-memory/work-items/*/planning/**'
+    - 'write_file:path=.project-memory/work-items/*/reviews/**'
+    - 'edit_file:path=.project-memory/work-items/*/reviews/**'
+    - 'write_file:path=.project-memory/work-items/*/continuity.md'
+    - 'edit_file:path=.project-memory/work-items/*/continuity.md'
+    - 'write_file:path=.project-memory/README.md'
+    - 'edit_file:path=.project-memory/README.md'
+    - 'write_file:path=.project-memory/roadmap/**'
+    - 'edit_file:path=.project-memory/roadmap/**'
+    - 'write_file:path=.project-memory/architecture/**'
+    - 'edit_file:path=.project-memory/architecture/**'
+    - 'write_file:path=.project-memory/templates/**'
+    - 'edit_file:path=.project-memory/templates/**'
+    - 'write_file:path=.project-memory/delivery/**'
+    - 'edit_file:path=.project-memory/delivery/**'
+
+    # Архитектурные и конфигурационные файлы
+    - 'write_file:path=docs/**'
+    - 'edit_file:path=docs/**'
+    - 'write_file:path=schemas/**'
+    - 'edit_file:path=schemas/**'
+    - 'write_file:path=agents/**'
+    - 'edit_file:path=agents/**'
+    - 'write_file:path=.github/**'
+    - 'edit_file:path=.github/**'
+    - 'write_file:path=Dockerfile*'
+    - 'edit_file:path=Dockerfile*'
+    - 'write_file:path=docker-compose*.yml'
+    - 'edit_file:path=docker-compose*.yml'
+    - 'write_file:path=pyproject.toml'
+    - 'edit_file:path=pyproject.toml'
+    - 'write_file:path=document-qa-prototype/pyproject.toml'
+    - 'edit_file:path=document-qa-prototype/pyproject.toml'
+    - 'write_file:path=xrd-platform/pyproject.toml'
+    - 'edit_file:path=xrd-platform/pyproject.toml'
+    - 'write_file:path=package.json'
+    - 'edit_file:path=package.json'
+    - 'write_file:path=Makefile'
+    - 'edit_file:path=Makefile'
+    - 'write_file:path=node_modules/**'
+    - 'edit_file:path=node_modules/**'
+    - 'write_file:path=target/**'
+    - 'edit_file:path=target/**'
+    - 'write_file:path=build/**'
+    - 'edit_file:path=build/**'
+
+    # Выход из песочницы
+    - 'shell:cmd=cd ..*'
+    - 'shell:cmd=cd /*'
+    - 'shell:cmd=cd ~*'
+    - 'shell:cmd=pushd*'
+    - 'shell:cmd=popd*'
+    - 'shell:cmd=ls ..*'
+    - 'shell:cmd=find ..*'
+    - 'shell:cmd=cat ..*'
+    - 'shell:cmd=grep ..*'
+    - 'shell:cmd=ls /*'
+    - 'shell:cmd=find /*'
+    - 'shell:cmd=cat /*'
+    - 'shell:cmd=grep /*'
+
+    # Git-мутации и опасные команды
+    - 'shell:cmd=git add*'
+    - 'shell:cmd=git commit*'
+    - 'shell:cmd=git push*'
+    - 'shell:cmd=git reset*'
+    - 'shell:cmd=git restore*'
+    - 'shell:cmd=git checkout*'
+    - 'shell:cmd=git switch*'
+    - 'shell:cmd=git merge*'
+    - 'shell:cmd=git rebase*'
+    - 'shell:cmd=git clean*'
+    - 'shell:cmd=git log*'
+    - 'shell:cmd=git tag*'
+    - 'shell:cmd=git stash*'
+    - 'shell:cmd=gh release*'
+    - 'shell:cmd=rm*'
+    - 'shell:cmd=mv*'
+    - 'shell:cmd=sudo*'
+    - 'shell:cmd=chmod*'
+    - 'shell:cmd=chown*'
+    - 'shell:cmd=pip install*'
+    - 'shell:cmd=python -m pip install*'
+    - 'shell:cmd=docker push*'
+    - 'shell:cmd=docker login*'
+    - 'shell:cmd=docker tag*'
+    - 'shell:cmd=docker system*'
+    - 'shell:cmd=docker compose up*'
